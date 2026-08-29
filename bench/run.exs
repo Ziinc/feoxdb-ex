@@ -9,14 +9,16 @@ Code.require_file("support/systems.ex", __DIR__)
 defmodule Bench.Run do
   @moduledoc false
 
-  @systems %{
-    "feox_memory" => {Bench.System.FeoxMemory, []},
-    "feox_persistent" =>
-      {Bench.System.FeoxPersistent, [path: Path.join(System.tmp_dir!(), "feoxdb_bench.feox")]},
-    "cubdb" => {Bench.System.CubDB, [path: Path.join(System.tmp_dir!(), "cubdb_bench")]},
-    "cachex" => {Bench.System.Cachex, [name: :bench_cache]},
-    "ets" => {Bench.System.Ets, [name: :bench_ets]}
-  }
+  defp systems do
+    %{
+      "feox_memory" => {Bench.System.FeoxMemory, []},
+      "feox_persistent" =>
+        {Bench.System.FeoxPersistent, [path: Path.join(bench_tmp_dir(), "feoxdb_bench.feox")]},
+      "cubdb" => {Bench.System.CubDB, [path: Path.join(bench_tmp_dir(), "cubdb_bench")]},
+      "cachex" => {Bench.System.Cachex, [name: :bench_cache]},
+      "ets" => {Bench.System.Ets, [name: :bench_ets]}
+    }
+  end
 
   def dataset_size, do: env_int("BENCH_DATASET_SIZE", 5_000)
   def value_size, do: env_int("BENCH_VALUE_SIZE", 64)
@@ -45,12 +47,20 @@ defmodule Bench.Run do
     end
   end
 
+  # Prefer tmpfs when available: the persistent-mode scenarios push enough
+  # write volume that a slow disk (an overlay filesystem in a container,
+  # say) causes FeOxDB's write buffer to back up and log retry warnings,
+  # which is noisy without being a meaningful part of what's measured here.
+  defp bench_tmp_dir do
+    if File.dir?("/dev/shm"), do: "/dev/shm", else: System.tmp_dir!()
+  end
+
   def value(size), do: :crypto.strong_rand_bytes(size)
 
   def keys(count), do: for(i <- 1..count, do: "key:" <> Integer.to_string(i))
 
   def open_all(opts \\ []) do
-    Map.new(@systems, fn {name, {mod, mod_opts}} ->
+    Map.new(systems(), fn {name, {mod, mod_opts}} ->
       {name, {mod, mod.open(Keyword.merge(mod_opts, opts))}}
     end)
   end
