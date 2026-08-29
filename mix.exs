@@ -31,6 +31,7 @@ defmodule FeoxDB.MixProject do
       {:rustler_precompiled, "~> 0.9"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:stream_data, "~> 1.1", only: [:dev, :test]},
 
       # PRD section 9: benchmark comparison targets. Only needed to run
