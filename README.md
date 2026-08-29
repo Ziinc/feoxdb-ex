@@ -85,7 +85,16 @@ cargo fmt --manifest-path native/feoxdb_nif/Cargo.toml -- --check
 cargo clippy --manifest-path native/feoxdb_nif/Cargo.toml --release -- -D warnings
 mix dialyzer
 mix docs
+ast-grep scan --config sgconfig.yml --error
 ```
+
+`sgconfig.yml` and `rules/` configure [ast-grep](https://ast-grep.github.io/)
+checks over `native/feoxdb_nif/src/`: they catch `#[rustler::nif(...)]`
+functions that omit an explicit `schedule = "..."` (Rustler silently
+defaults to non-dirty scheduling, which can block a BEAM scheduler thread)
+and `.unwrap()`/`.expect(...)` calls in NIF code (a panic unwinding out of a
+NIF is a known risk here). See the comments in `sgconfig.yml` and
+`rules/*.yml` for details and known limitations.
 
 The soak test (PRD milestone 3) is excluded from the default `mix test`
 run since it's meant to run for hours, not seconds:

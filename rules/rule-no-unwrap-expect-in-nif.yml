@@ -1,0 +1,40 @@
+# Flags `.unwrap()` / `.expect(...)` calls anywhere under
+# native/feoxdb_nif/src/, outside of `#[cfg(test)]` modules.
+#
+# A panic unwinding out of a NIF call is a known risk in this codebase (see
+# the comment on `StoreResource`'s `RefUnwindSafe` impl in store.rs): NIF
+# code should convert errors into `Result`/`NifResult`/`Error` values (see
+# `to_nif_error`) instead of panicking, since a panic in a NIF can crash or
+# destabilize the BEAM scheduler thread it runs on.
+#
+# `files`/`ignores` in this project's sgconfig.yml/CI invocation restrict
+# this rule to `native/feoxdb_nif/src/**/*.rs`. The `not: inside: ...`
+# clause below additionally excludes calls that live inside a `mod` item
+# directly annotated with `#[cfg(test)]`, which is the convention this
+# codebase would use for inline test modules.
+#
+# Known pre-existing finding: `owned_binary` in store.rs currently contains
+# `.expect("allocation failed")`. This predates the rule and is
+# intentionally still flagged so it can be triaged/fixed separately; it is
+# not a blocker for the PR that introduces this rule.
+id: no-unwrap-expect-in-nif
+language: rust
+severity: warning
+message: >-
+  Avoid `.unwrap()`/`.expect(...)` in NIF code. A panic here can unwind out
+  of a NIF call and destabilize the BEAM scheduler thread. Return a
+  `Result`/`NifResult`/`Error` instead (see `to_nif_error`).
+rule:
+  any:
+    - pattern: $EXPR.unwrap()
+    - pattern: $EXPR.expect($MSG)
+  not:
+    inside:
+      kind: mod_item
+      stopBy: end
+      has:
+        kind: attribute_item
+        regex: 'cfg\s*\(\s*test\s*\)'
+        stopBy: end
+files:
+  - "native/feoxdb_nif/src/**/*.rs"
