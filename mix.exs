@@ -14,7 +14,10 @@ defmodule FeoxDB.MixProject do
       description: "Elixir bindings for FeOxDB, an embedded key-value store",
       package: package(),
       docs: docs(),
-      dialyzer: [plt_add_apps: [:mix]],
+      dialyzer: [
+        plt_add_apps: [:mix],
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"}
+      ],
       source_url: @source_url
     ]
   end
@@ -32,6 +35,7 @@ defmodule FeoxDB.MixProject do
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:stream_data, "~> 1.1", only: [:dev, :test]},
 
       # PRD section 9: benchmark comparison targets. Only needed to run
