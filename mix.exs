@@ -9,6 +9,7 @@ defmodule FeoxDB.MixProject do
       app: :feox_db,
       version: @version,
       elixir: "~> 1.15",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description: "Elixir bindings for FeOxDB, an embedded key-value store",
@@ -27,6 +28,13 @@ defmodule FeoxDB.MixProject do
       extra_applications: [:logger]
     ]
   end
+
+  # `credo_checks/` holds our custom Credo checks (see `.credo.exs`). They
+  # depend on `Credo.Check`, which is only available in `:dev`/`:test`
+  # (where `mix credo` actually runs), so they're excluded from the default
+  # (`:prod`) compilation path.
+  defp elixirc_paths(env) when env in [:dev, :test], do: ["lib", "credo_checks"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   defp deps do
     [
