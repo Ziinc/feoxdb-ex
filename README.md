@@ -44,12 +44,19 @@ Building from source requires a Rust toolchain (stable, 2021 edition).
 {:ok, store} = FeoxDB.open()
 :ok = FeoxDB.insert(store, "key", "value")
 {:ok, "value"} = FeoxDB.get(store, "key")
+:ok = FeoxDB.close(store)
 
 # Persistent mode
 {:ok, store} = FeoxDB.open(path: "/var/lib/app.feox")
 :ok = FeoxDB.insert(store, "key", "value")
 :ok = FeoxDB.flush(store)
+:ok = FeoxDB.close(store)
 ```
+
+Call `FeoxDB.close/1` once you are done with a store instead of relying on
+the garbage collector: it deterministically stops the store's background
+writer/TTL sweeper threads and releases its resources, which matters most
+for disk-backed stores.
 
 See the `FeoxDB` module docs for the full API: ranges, TTL, atomic
 increment/compare-and-swap, and RFC 6902 JSON patch.

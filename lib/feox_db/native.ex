@@ -33,6 +33,7 @@ defmodule FeoxDB.Native do
   def open(_path, _file_size, _max_memory, _hash_bits, _enable_ttl),
     do: :erlang.nif_error(:nif_not_loaded)
 
+  def close(_resource), do: :erlang.nif_error(:nif_not_loaded)
   def flush(_resource), do: :erlang.nif_error(:nif_not_loaded)
   def get(_resource, _key), do: :erlang.nif_error(:nif_not_loaded)
   def insert(_resource, _key, _value, _ttl), do: :erlang.nif_error(:nif_not_loaded)

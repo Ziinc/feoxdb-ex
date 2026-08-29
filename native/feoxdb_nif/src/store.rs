@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use feoxdb::FeoxStore;
 use rustler::{Atom, Binary, Env, Error, NifResult, OwnedBinary, ResourceArc, Term};
@@ -8,7 +8,15 @@ use crate::error::{out_of_memory_error, to_nif_error};
 /// Wraps `Arc<FeoxStore>` so the resource itself is cheap to clone/share across
 /// processes (PRD section 6.1) while `FeoxStore`'s own `Drop` impl stops the
 /// background writer / TTL sweeper threads when the last reference goes away.
-pub struct StoreResource(pub Arc<FeoxStore>);
+///
+/// The `Arc` is held behind an `RwLock<Option<_>>` rather than directly so
+/// that `close/1` can deterministically `take()` it out (dropping the store's
+/// reference right away instead of waiting on the GC to collect the
+/// `ResourceArc`), while every other NIF takes a read lock and gets a clean
+/// `{:error, :closed}` instead of panicking if the store has already been
+/// closed. The common (not-closed) path only ever contends on the read lock,
+/// which is cheap and allows concurrent readers.
+pub struct StoreResource(RwLock<Option<Arc<FeoxStore>>>);
 
 // `FeoxStore` uses interior mutability (locks, atomics) internally and handles
 // its own synchronization; a Rust panic unwinding through a NIF call does not
@@ -17,6 +25,24 @@ impl std::panic::RefUnwindSafe for StoreResource {}
 
 #[rustler::resource_impl]
 impl rustler::Resource for StoreResource {}
+
+impl StoreResource {
+    fn new(store: Arc<FeoxStore>) -> Self {
+        Self(RwLock::new(Some(store)))
+    }
+
+    /// Returns a clone of the underlying store, or a `{:error, :closed}` NIF
+    /// error if `close/1` has already released it.
+    fn get(&self) -> Result<Arc<FeoxStore>, Error> {
+        let guard = self
+            .0
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard
+            .clone()
+            .ok_or_else(|| Error::Term(Box::new(crate::error::closed())))
+    }
+}
 
 /// Copies `bytes` into a freshly allocated `OwnedBinary` handed off to the
 /// BEAM. `OwnedBinary::new` returns `None` (not a `Result`) when the
@@ -61,12 +87,26 @@ pub fn open(
         store.start_ttl_sweeper(None);
     }
 
-    Ok(ResourceArc::new(StoreResource(store)))
+    Ok(ResourceArc::new(StoreResource::new(store)))
+}
+
+/// Deterministically releases the store's native resources rather than
+/// relying solely on GC of the resource reference. Idempotent: calling it
+/// more than once, or from more than one process, simply returns `:ok`
+/// without error.
+#[rustler::nif]
+pub fn close(resource: ResourceArc<StoreResource>) -> Atom {
+    let mut guard = resource
+        .0
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = None;
+    rustler::types::atom::ok()
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
 pub fn flush(resource: ResourceArc<StoreResource>) -> Result<Atom, Error> {
-    resource.0.flush().map_err(to_nif_error)?;
+    resource.get()?.flush().map_err(to_nif_error)?;
     Ok(rustler::types::atom::ok())
 }
 
@@ -76,7 +116,7 @@ pub fn get<'a>(
     resource: ResourceArc<StoreResource>,
     key: Binary<'a>,
 ) -> Result<Binary<'a>, Error> {
-    let value = resource.0.get(key.as_slice()).map_err(to_nif_error)?;
+    let value = resource.get()?.get(key.as_slice()).map_err(to_nif_error)?;
     owned_binary(env, &value)
 }
 
@@ -87,13 +127,12 @@ pub fn insert(
     value: Binary,
     ttl: Option<u64>,
 ) -> Result<bool, Error> {
+    let store = resource.get()?;
     let result = match ttl {
         Some(seconds) if seconds > 0 => {
-            resource
-                .0
-                .insert_with_ttl(key.as_slice(), value.as_slice(), seconds)
+            store.insert_with_ttl(key.as_slice(), value.as_slice(), seconds)
         }
-        _ => resource.0.insert(key.as_slice(), value.as_slice()),
+        _ => store.insert(key.as_slice(), value.as_slice()),
     };
 
     result.map_err(to_nif_error)
@@ -101,23 +140,26 @@ pub fn insert(
 
 #[rustler::nif(schedule = "DirtyIo")]
 pub fn delete(resource: ResourceArc<StoreResource>, key: Binary) -> Result<Atom, Error> {
-    resource.0.delete(key.as_slice()).map_err(to_nif_error)?;
+    resource
+        .get()?
+        .delete(key.as_slice())
+        .map_err(to_nif_error)?;
     Ok(rustler::types::atom::ok())
 }
 
 #[rustler::nif]
-pub fn member(resource: ResourceArc<StoreResource>, key: Binary) -> bool {
-    resource.0.contains_key(key.as_slice())
+pub fn member(resource: ResourceArc<StoreResource>, key: Binary) -> Result<bool, Error> {
+    Ok(resource.get()?.contains_key(key.as_slice()))
 }
 
 #[rustler::nif]
-pub fn size(resource: ResourceArc<StoreResource>) -> usize {
-    resource.0.len()
+pub fn size(resource: ResourceArc<StoreResource>) -> Result<usize, Error> {
+    Ok(resource.get()?.len())
 }
 
 #[rustler::nif]
-pub fn memory_usage(resource: ResourceArc<StoreResource>) -> usize {
-    resource.0.memory_usage()
+pub fn memory_usage(resource: ResourceArc<StoreResource>) -> Result<usize, Error> {
+    Ok(resource.get()?.memory_usage())
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
@@ -129,7 +171,7 @@ pub fn range<'a>(
     limit: usize,
 ) -> Result<Vec<(Binary<'a>, Binary<'a>)>, Error> {
     let results = resource
-        .0
+        .get()?
         .range_query(start_key.as_slice(), end_key.as_slice(), limit)
         .map_err(to_nif_error)?;
 
@@ -141,7 +183,10 @@ pub fn range<'a>(
 
 #[rustler::nif]
 pub fn ttl(resource: ResourceArc<StoreResource>, key: Binary) -> Result<Option<u64>, Error> {
-    resource.0.get_ttl(key.as_slice()).map_err(to_nif_error)
+    resource
+        .get()?
+        .get_ttl(key.as_slice())
+        .map_err(to_nif_error)
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
@@ -151,7 +196,7 @@ pub fn update_ttl(
     seconds: u64,
 ) -> Result<Atom, Error> {
     resource
-        .0
+        .get()?
         .update_ttl(key.as_slice(), seconds)
         .map_err(to_nif_error)?;
     Ok(rustler::types::atom::ok())
@@ -159,7 +204,10 @@ pub fn update_ttl(
 
 #[rustler::nif(schedule = "DirtyIo")]
 pub fn persist(resource: ResourceArc<StoreResource>, key: Binary) -> Result<Atom, Error> {
-    resource.0.persist(key.as_slice()).map_err(to_nif_error)?;
+    resource
+        .get()?
+        .persist(key.as_slice())
+        .map_err(to_nif_error)?;
     Ok(rustler::types::atom::ok())
 }
 
@@ -170,7 +218,7 @@ pub fn increment(
     delta: i64,
 ) -> Result<i64, Error> {
     resource
-        .0
+        .get()?
         .atomic_increment(key.as_slice(), delta)
         .map_err(to_nif_error)
 }
@@ -183,7 +231,7 @@ pub fn compare_and_swap(
     new_value: Binary,
 ) -> Result<bool, Error> {
     resource
-        .0
+        .get()?
         .compare_and_swap(key.as_slice(), expected.as_slice(), new_value.as_slice())
         .map_err(to_nif_error)
 }
@@ -195,7 +243,7 @@ pub fn json_patch(
     patch: Binary,
 ) -> Result<Atom, Error> {
     resource
-        .0
+        .get()?
         .json_patch(key.as_slice(), patch.as_slice())
         .map_err(to_nif_error)?;
     Ok(rustler::types::atom::ok())
@@ -203,7 +251,7 @@ pub fn json_patch(
 
 #[rustler::nif]
 pub fn stats<'a>(env: Env<'a>, resource: ResourceArc<StoreResource>) -> NifResult<Term<'a>> {
-    let snapshot = resource.0.stats();
+    let snapshot = resource.get()?.stats();
 
     let pairs: Vec<(Atom, u64)> = vec![
         (crate::atoms::record_count(), snapshot.record_count as u64),

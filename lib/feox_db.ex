@@ -13,6 +13,13 @@ defmodule FeoxDB do
       {:ok, store} = FeoxDB.open()
       :ok = FeoxDB.insert(store, "key", "value")
       {:ok, "value"} = FeoxDB.get(store, "key")
+      :ok = FeoxDB.close(store)
+
+  A store's native resources are released when the resource reference is
+  garbage collected, but for disk-backed stores this can leave background
+  writer / TTL sweeper threads (and open file handles) alive for longer than
+  expected. Call `close/1` once you are done with a store to release those
+  resources deterministically instead of waiting on the GC.
   """
 
   alias FeoxDB.Native
@@ -65,6 +72,7 @@ defmodule FeoxDB do
           | :unsupported
           | :unknown_error
           | :limit_too_large
+          | :closed
 
   ## Lifecycle
 
@@ -104,6 +112,21 @@ defmodule FeoxDB do
   @spec open!(keyword()) :: store()
   def open!(opts \\ []) do
     unwrap!(open(opts))
+  end
+
+  @doc """
+  Closes a store, releasing its native resources (background writer / TTL
+  sweeper threads, and any open file handles for disk-backed stores)
+  deterministically instead of waiting for the resource reference to be
+  garbage collected.
+
+  Idempotent: calling `close/1` again on an already-closed store is a
+  no-op and returns `:ok`. Any other operation on a closed store returns
+  `{:error, :closed}` rather than raising or crashing.
+  """
+  @spec close(store()) :: :ok
+  def close(store) do
+    :ok = Native.close(store)
   end
 
   @doc """
@@ -196,7 +219,7 @@ defmodule FeoxDB do
   (see `insert/4`), so this returns `false` for it directly, without calling
   into native code.
   """
-  @spec member?(store(), key()) :: boolean()
+  @spec member?(store(), key()) :: boolean() | {:error, error_reason()}
   def member?(store, key) when is_binary(key) do
     case validate_key_size(key) do
       :ok -> Native.member(store, key)
@@ -205,13 +228,13 @@ defmodule FeoxDB do
   end
 
   @doc "Returns the number of records in the store."
-  @spec size(store()) :: non_neg_integer()
+  @spec size(store()) :: non_neg_integer() | {:error, error_reason()}
   def size(store) do
     Native.size(store)
   end
 
   @doc "Returns the store's memory usage, in bytes."
-  @spec memory_usage(store()) :: non_neg_integer()
+  @spec memory_usage(store()) :: non_neg_integer() | {:error, error_reason()}
   def memory_usage(store) do
     Native.memory_usage(store)
   end
@@ -374,7 +397,7 @@ defmodule FeoxDB do
   ## Stats
 
   @doc "Returns a snapshot of the store's internal statistics as a map."
-  @spec stats(store()) :: map()
+  @spec stats(store()) :: map() | {:error, error_reason()}
   def stats(store) do
     Native.stats(store)
   end
