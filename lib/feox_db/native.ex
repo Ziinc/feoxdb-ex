@@ -3,11 +3,22 @@ defmodule FeoxDB.Native do
 
   version = Mix.Project.config()[:version]
 
+  # `.github/workflows/release.yml` (PRD section 8.4) publishes precompiled
+  # artifacts on every `v*` tag and, in the same run, opens a PR committing
+  # a regenerated `checksum-Elixir.FeoxDB.Native.exs`. Until that file has
+  # been committed once (i.e. before the first release), there is nothing
+  # to download, so this always builds from source; once it exists,
+  # RustlerPrecompiled's own checksum verification takes over and a
+  # download is attempted first, same as any other RustlerPrecompiled
+  # package. `FEOXDB_BUILD=true` always forces a source build regardless.
+  checksum_path = Path.join(File.cwd!(), "checksum-Elixir.FeoxDB.Native.exs")
+
   use RustlerPrecompiled,
     otp_app: :feox_db,
     crate: "feoxdb_nif",
     base_url: "https://github.com/ziinc/feoxdb-ex/releases/download/v#{version}",
-    force_build: System.get_env("FEOXDB_BUILD") in ["1", "true"] || true,
+    force_build:
+      System.get_env("FEOXDB_BUILD") in ["1", "true"] or not File.exists?(checksum_path),
     nif_versions: ["2.15"],
     targets: ~w(
       aarch64-apple-darwin
@@ -18,10 +29,6 @@ defmodule FeoxDB.Native do
       aarch64-unknown-linux-musl
     ),
     version: version
-
-  # Milestones 4-5 (PRD section 8) will publish precompiled artifacts and flip
-  # `force_build` back to only trigger via `FEOXDB_BUILD=true`. Until then this
-  # module always builds from source with the local Rust toolchain.
 
   def open(_path, _file_size, _max_memory, _hash_bits, _enable_ttl),
     do: :erlang.nif_error(:nif_not_loaded)

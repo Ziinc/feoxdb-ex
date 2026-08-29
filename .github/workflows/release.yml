@@ -1,0 +1,98 @@
+name: Release NIFs
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build_release:
+    name: NIF ${{ matrix.nif }} - ${{ matrix.target }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        nif: ["2.15"]
+        job:
+          # Tier 1 (PRD section 8.3): must build cleanly on every push.
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04, use-cross: true }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-22.04, use-cross: true }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-22.04, use-cross: true }
+          - { target: x86_64-apple-darwin, os: macos-13 }
+          - { target: aarch64-apple-darwin, os: macos-14 }
+          # Tier 2 (PRD section 8.3): best effort, allowed to fail the job
+          # without failing the release.
+          - { target: x86_64-pc-windows-msvc, os: windows-2022 }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build precompiled NIF
+        uses: philss/rustler-precompiled-action@v1.1.4
+        id: build-crate
+        continue-on-error: ${{ matrix.job.target == 'x86_64-pc-windows-msvc' }}
+        with:
+          project-name: feoxdb_nif
+          project-dir: native/feoxdb_nif
+          project-version: ${{ github.ref_name }}
+          target: ${{ matrix.job.target }}
+          nif-version: ${{ matrix.nif }}
+          use-cross: ${{ matrix.job.use-cross || false }}
+
+      - name: Upload artifact
+        if: steps.build-crate.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build-crate.outputs.file-name }}
+          path: ${{ steps.build-crate.outputs.file-path }}
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: steps.build-crate.outcome == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.build-crate.outputs.file-path }}
+
+  checksum:
+    name: Regenerate checksum file
+    needs: build_release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.17"
+          otp-version: "26"
+
+      - name: Install Hex/Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Download checksums for released artifacts
+        run: mix rustler_precompiled.download FeoxDB.Native --all --print
+
+      - name: Upload checksum file as a release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: checksum-Elixir.FeoxDB.Native.exs
+
+      - name: Open a PR to commit the checksum file
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Update NIF checksums for ${{ github.ref_name }}"
+          branch: update-checksums-${{ github.ref_name }}
+          title: "Update NIF checksums for ${{ github.ref_name }}"
+          body: |
+            Regenerated `checksum-Elixir.FeoxDB.Native.exs` after publishing
+            the `${{ github.ref_name }}` release artifacts (PRD section 8.2).
+            This file must be committed before publishing to Hex.
+          add-paths: checksum-Elixir.FeoxDB.Native.exs

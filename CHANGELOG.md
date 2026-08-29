@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Milestones 3-7: tests, CI matrix, release automation, benchmarks
+
+- Milestone 3 (property tests and concurrency tests): added
+  `stream_data` property tests (`test/feox_db_property_test.exs`),
+  concurrency tests hammering a single store from many processes at once
+  (`test/feox_db_concurrency_test.exs`), and a soak test
+  (`test/feox_db_soak_test.exs`, tagged `:soak` and excluded from the
+  default `mix test` run) that runs a configurable-duration mixed
+  workload — pass `FEOXDB_SOAK_DURATION_MS` for a real multi-hour run.
+- Milestone 4 (CI cross-build matrix): added `.github/workflows/ci.yml`
+  (format, clippy, compile, test, Dialyzer, docs on every push/PR).
+- Milestone 5 (RustlerPrecompiled release, checksum file): added
+  `.github/workflows/release.yml`, which builds precompiled NIFs for
+  every Tier 1 target plus best-effort Windows on a `v*` tag push,
+  attaches them to the GitHub release, and opens a PR regenerating
+  `checksum-Elixir.FeoxDB.Native.exs`. `FeoxDB.Native` now builds from
+  source until that checksum file exists (i.e. before the first
+  release) and otherwise defers to RustlerPrecompiled's normal
+  download-then-verify behavior.
+- Milestone 6 (benchmark harness): added `bench/run.exs` and
+  `bench/support/systems.ex`, a Benchee harness comparing `feoxdb_ex`
+  (memory and persistent modes) against CubDB, Cachex, and raw `:ets`
+  across 4 of the PRD's 8 workloads. See `bench/README.md` for scope,
+  fairness rules applied, and how to scale it up.
+- Milestone 7 (benchmark report): published `bench/REPORT.md` from a run
+  in this sandbox, explicitly caveated as a single-container smoke-scale
+  run rather than the PRD section 9.6 dedicated-hardware benchmark.
+
 ### Milestone 2: Full API, error mapping, typespecs
 
 - Bumped the minimum Elixir version to `~> 1.15` to match what `rustler`

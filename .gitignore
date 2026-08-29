@@ -30,3 +30,7 @@ feox_db-*.tar
 /priv/native/
 *.feox
 *.feox.lock
+
+# Generated benchmark reports (PRD section 9); rerun bench/run.exs to
+# regenerate.
+/bench/output/
