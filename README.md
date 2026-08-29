@@ -6,11 +6,23 @@ background. See [`docs/PRD.md`](docs/PRD.md) for the full design.
 
 ## Status
 
-Milestone 1 of the PRD: a working skeleton exposing the full FeOxDB API
-(lifecycle, basic operations, ranges, TTL, atomics, JSON patch, and stats)
-through Rustler, with a passing test suite. Precompiled release artifacts
-(PRD section 8) have not been published yet, so the NIF always builds from
-source for now.
+All 7 PRD milestones have a first pass implemented:
+
+- Full FeOxDB API (lifecycle, basic operations, ranges, TTL, atomics,
+  JSON patch, stats) through Rustler, Dialyzer-clean, with published docs.
+- Property, concurrency, and soak tests (`mix test`; see
+  [Development](#development) below for the soak test).
+- CI (`.github/workflows/ci.yml`) and a release workflow
+  (`.github/workflows/release.yml`) that builds precompiled NIFs for
+  every Tier 1 target (plus best-effort Windows) on a tagged release.
+- A Benchee-based benchmark harness comparing `feoxdb_ex` against CubDB,
+  Cachex, and raw `:ets` (see [`bench/`](bench)).
+
+Precompiled release artifacts haven't actually been published yet (no
+`v*` tag has been pushed), so the NIF still always builds from source —
+`FeoxDB.Native` switches to downloading precompiled binaries automatically
+once `checksum-Elixir.FeoxDB.Native.exs` exists, which the release
+workflow generates on the first tagged release.
 
 ## Installation
 
@@ -51,3 +63,24 @@ mix test
 
 The Rust crate lives under `native/feoxdb_nif`; `mix compile` builds it
 automatically via Rustler.
+
+Other checks used in CI:
+
+```
+mix format --check-formatted
+cargo fmt --manifest-path native/feoxdb_nif/Cargo.toml -- --check
+cargo clippy --manifest-path native/feoxdb_nif/Cargo.toml --release -- -D warnings
+mix dialyzer
+mix docs
+```
+
+The soak test (PRD milestone 3) is excluded from the default `mix test`
+run since it's meant to run for hours, not seconds:
+
+```
+mix test --only soak test/feox_db_soak_test.exs
+FEOXDB_SOAK_DURATION_MS=86400000 mix test --only soak --timeout :infinity test/feox_db_soak_test.exs
+```
+
+See [`bench/README.md`](bench/README.md) for the benchmark harness and
+[`bench/REPORT.md`](bench/REPORT.md) for the latest results.

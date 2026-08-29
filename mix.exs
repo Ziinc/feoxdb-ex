@@ -30,7 +30,15 @@ defmodule FeoxDB.MixProject do
       {:rustler, ">= 0.0.0", optional: true},
       {:rustler_precompiled, "~> 0.9"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:stream_data, "~> 1.1", only: [:dev, :test]},
+
+      # PRD section 9: benchmark comparison targets. Only needed to run
+      # `mix run bench/run.exs`, so they stay out of the default build.
+      {:benchee, "~> 1.3", only: :bench},
+      {:benchee_html, "~> 1.0", only: :bench},
+      {:cubdb, "~> 2.0", only: :bench},
+      {:cachex, "~> 4.0", only: :bench}
     ]
   end
 
