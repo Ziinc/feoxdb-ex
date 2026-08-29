@@ -8,7 +8,7 @@ defmodule FeoxDB.MixProject do
     [
       app: :feox_db,
       version: @version,
-      elixir: "~> 1.14",
+      elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description: "Elixir bindings for FeOxDB, an embedded key-value store",
@@ -45,6 +45,7 @@ defmodule FeoxDB.MixProject do
         "checksum-Elixir.FeoxDB.Native.exs",
         "mix.exs",
         "README.md",
+        "CHANGELOG.md",
         "LICENSE"
       ],
       licenses: ["Apache-2.0"],
@@ -56,7 +57,7 @@ defmodule FeoxDB.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md"]
+      extras: ["README.md", "CHANGELOG.md", "docs/PRD.md"]
     ]
   end
 end
