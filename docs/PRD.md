@@ -279,7 +279,7 @@ Milestones 1-3 and 6 can proceed in parallel with 4-5.
 1. Does dropping the `ResourceArc` shut down FeOxDB's background writer threads? If not, the destructor must call an explicit close, and we need to decide what happens to calls that arrive after close.
 2. What happens on hot code reload or `:code.purge` while writer threads are running? Rustler's resource destructors run on the BEAM's side; a thread that outlives the module is a crash risk.
 3. Are `io-uring`, `nix`, and `libc` gated by `cfg(target_os)` in the upstream crate? This decides whether Windows and macOS are buildable at all.
-4. Is `range_query` bounded in time by the limit argument, or does it scan before it truncates? This decides plain NIF versus dirty NIF.
+4. Is `range_query` bounded in time by the limit argument, or does it scan before it truncates? This decides plain NIF versus dirty NIF. **Addressed**: `range` and `flush` already ran on `DirtyIo`; we've now moved `get`, `insert`, `delete`, `json_patch`, `compare_and_swap`, `persist`, `update_ttl`, and `increment` to `DirtyIo` as well, since a disk-backed (`path:`-configured) store can block on I/O or lock contention for any of these. `member`, `size`, `memory_usage`, `ttl`, and `stats` remain plain NIFs because they only touch in-memory metadata/index structures and don't perform disk I/O.
 5. Does FeOxDB validate `hash_bits` and `file_size`? If not, the Elixir layer validates them, because an out-of-range value that reaches Rust may panic, and a panic inside a NIF brings down the whole node.
 6. Should the package expose a `flush_interval` knob, or is the fixed 100ms window acceptable?
 
