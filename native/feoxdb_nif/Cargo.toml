@@ -1,0 +1,22 @@
+[package]
+name = "feoxdb_nif"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "feoxdb_nif"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.38"
+# jemalloc's thread-local storage uses the initial-exec TLS model, which a
+# dlopen'd NIF shared library can exhaust ("cannot allocate memory in static
+# TLS block"). Loaded as a NIF, feoxdb_nif always runs against the BEAM's
+# allocator instead.
+feoxdb = { version = "0.6", default-features = false }
+
+[profile.release]
+lto = true
+codegen-units = 1
