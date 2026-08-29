@@ -54,6 +54,12 @@ Building from source requires a Rust toolchain (stable, 2021 edition).
 See the `FeoxDB` module docs for the full API: ranges, TTL, atomic
 increment/compare-and-swap, and RFC 6902 JSON patch.
 
+Keys are limited to 100 KB and values to 4 MB (mirroring the underlying
+`feoxdb` Rust crate's internal limits). `FeoxDB` checks these limits in
+Elixir before calling into native code and returns
+`{:error, :key_too_large}` / `{:error, :value_too_large}` for oversized
+input, rather than relying solely on that crate to reject it.
+
 ## Development
 
 ```

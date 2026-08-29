@@ -186,6 +186,107 @@ defmodule FeoxDBTest do
     end
   end
 
+  describe "key/value size validation" do
+    @max_key_size 100 * 1024
+    @max_value_size 4 * 1024 * 1024
+
+    setup do
+      {:ok, store: FeoxDB.open!()}
+    end
+
+    test "insert/4 accepts a key and value exactly at the size limit", %{store: store} do
+      key = String.duplicate("k", @max_key_size)
+      value = String.duplicate("v", @max_value_size)
+
+      assert :ok = FeoxDB.insert(store, key, value)
+      assert {:ok, ^value} = FeoxDB.get(store, key)
+    end
+
+    test "insert/4 rejects a key over the size limit without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+
+      assert {:error, :key_too_large} = FeoxDB.insert(store, key, "value")
+    end
+
+    test "insert/4 rejects a value over the size limit without calling native code" do
+      store = make_ref()
+      value = String.duplicate("v", @max_value_size + 1)
+
+      assert {:error, :value_too_large} = FeoxDB.insert(store, "key", value)
+    end
+
+    test "get/2 rejects an oversized key without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+
+      assert {:error, :key_too_large} = FeoxDB.get(store, key)
+    end
+
+    test "delete/2 rejects an oversized key without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+
+      assert {:error, :key_too_large} = FeoxDB.delete(store, key)
+    end
+
+    test "member?/2 returns false for an oversized key without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+
+      refute FeoxDB.member?(store, key)
+    end
+
+    test "range/4 rejects oversized bounds without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+
+      assert {:error, :key_too_large} = FeoxDB.range(store, key, "z", 10)
+      assert {:error, :key_too_large} = FeoxDB.range(store, "a", key, 10)
+    end
+
+    test "ttl/2 and update_ttl/3 reject an oversized key without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+
+      assert {:error, :key_too_large} = FeoxDB.ttl(store, key)
+      assert {:error, :key_too_large} = FeoxDB.update_ttl(store, key, 60)
+    end
+
+    test "persist/2 rejects an oversized key without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+
+      assert {:error, :key_too_large} = FeoxDB.persist(store, key)
+    end
+
+    test "increment/3 rejects an oversized key without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+
+      assert {:error, :key_too_large} = FeoxDB.increment(store, key)
+    end
+
+    test "compare_and_swap/4 rejects oversized key/value without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+      value = String.duplicate("v", @max_value_size + 1)
+
+      assert {:error, :key_too_large} = FeoxDB.compare_and_swap(store, key, "a", "b")
+      assert {:error, :value_too_large} = FeoxDB.compare_and_swap(store, "key", value, "b")
+      assert {:error, :value_too_large} = FeoxDB.compare_and_swap(store, "key", "a", value)
+    end
+
+    test "json_patch/3 rejects oversized key/patch without calling native code" do
+      store = make_ref()
+      key = String.duplicate("k", @max_key_size + 1)
+      patch = String.duplicate("p", @max_value_size + 1)
+
+      assert {:error, :key_too_large} = FeoxDB.json_patch(store, key, "[]")
+      assert {:error, :value_too_large} = FeoxDB.json_patch(store, "key", patch)
+    end
+  end
+
   describe "stats/1" do
     test "returns a map of counters" do
       store = FeoxDB.open!()
