@@ -17,6 +17,8 @@ defmodule FeoxDB do
 
   alias FeoxDB.Native
 
+  @max_range_limit 10_000
+
   @type store :: reference()
   @type key :: binary()
   @type value :: binary()
@@ -42,6 +44,7 @@ defmodule FeoxDB do
           | :not_implemented
           | :unsupported
           | :unknown_error
+          | :limit_too_large
 
   ## Lifecycle
 
@@ -170,12 +173,22 @@ defmodule FeoxDB do
   (both bounds inclusive), ordered by key.
 
   `limit` is required: an unbounded range query could run for an unknown
-  time on the scheduler and build an unbounded term (PRD section 7).
+  time on the scheduler and build an unbounded term (PRD section 7). `limit`
+  must also not exceed #{@max_range_limit}; larger values return
+  `{:error, :limit_too_large}` without reaching the native code, since the
+  native side allocates a `Vec` sized to `limit`.
 
   Runs as a dirty I/O NIF, since the cost of a scan depends on `limit`.
   """
   @spec range(store(), key(), key(), pos_integer()) ::
           {:ok, [{key(), value()}]} | {:error, error_reason()}
+  def range(store, start_key, end_key, limit)
+      when is_binary(start_key) and is_binary(end_key) and is_integer(limit) and limit > 0 and
+             limit > @max_range_limit do
+    _ = store
+    {:error, :limit_too_large}
+  end
+
   def range(store, start_key, end_key, limit)
       when is_binary(start_key) and is_binary(end_key) and is_integer(limit) and limit > 0 do
     case Native.range(store, start_key, end_key, limit) do

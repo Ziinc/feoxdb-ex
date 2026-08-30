@@ -111,6 +111,14 @@ defmodule FeoxDBTest do
       assert {:ok, pairs} = FeoxDB.range(store, "user:001", "user:003", 2)
       assert length(pairs) == 2
     end
+
+    test "allows a limit at the maximum", %{store: store} do
+      assert {:ok, _pairs} = FeoxDB.range(store, "user:001", "user:003", 10_000)
+    end
+
+    test "rejects a limit above the maximum", %{store: store} do
+      assert {:error, :limit_too_large} = FeoxDB.range(store, "user:001", "user:003", 10_001)
+    end
   end
 
   describe "TTL" do
