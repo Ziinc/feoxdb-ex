@@ -3,7 +3,7 @@ use std::sync::Arc;
 use feoxdb::FeoxStore;
 use rustler::{Atom, Binary, Env, Error, NifResult, OwnedBinary, ResourceArc, Term};
 
-use crate::error::to_nif_error;
+use crate::error::{out_of_memory_error, to_nif_error};
 
 /// Wraps `Arc<FeoxStore>` so the resource itself is cheap to clone/share across
 /// processes (PRD section 6.1) while `FeoxStore`'s own `Drop` impl stops the
@@ -18,10 +18,14 @@ impl std::panic::RefUnwindSafe for StoreResource {}
 #[rustler::resource_impl]
 impl rustler::Resource for StoreResource {}
 
-fn owned_binary<'a>(env: Env<'a>, bytes: &[u8]) -> Binary<'a> {
-    let mut owned = OwnedBinary::new(bytes.len()).expect("allocation failed");
+/// Copies `bytes` into a freshly allocated `OwnedBinary` handed off to the
+/// BEAM. `OwnedBinary::new` returns `None` (not a `Result`) when the
+/// allocation fails, so we surface that as `{:error, :out_of_memory}`
+/// instead of panicking the whole NIF call via `.expect(...)`.
+fn owned_binary<'a>(env: Env<'a>, bytes: &[u8]) -> Result<Binary<'a>, Error> {
+    let mut owned = OwnedBinary::new(bytes.len()).ok_or_else(out_of_memory_error)?;
     owned.as_mut_slice().copy_from_slice(bytes);
-    Binary::from_owned(owned, env)
+    Ok(Binary::from_owned(owned, env))
 }
 
 #[rustler::nif]
@@ -73,7 +77,7 @@ pub fn get<'a>(
     key: Binary<'a>,
 ) -> Result<Binary<'a>, Error> {
     let value = resource.0.get(key.as_slice()).map_err(to_nif_error)?;
-    Ok(owned_binary(env, &value))
+    owned_binary(env, &value)
 }
 
 #[rustler::nif]
@@ -129,10 +133,10 @@ pub fn range<'a>(
         .range_query(start_key.as_slice(), end_key.as_slice(), limit)
         .map_err(to_nif_error)?;
 
-    Ok(results
+    results
         .into_iter()
-        .map(|(k, v)| (owned_binary(env, &k), owned_binary(env, &v)))
-        .collect())
+        .map(|(k, v)| Ok((owned_binary(env, &k)?, owned_binary(env, &v)?)))
+        .collect()
 }
 
 #[rustler::nif]

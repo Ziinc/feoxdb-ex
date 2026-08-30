@@ -61,3 +61,10 @@ pub fn to_atom(error: &FeoxError) -> rustler::Atom {
 pub fn to_nif_error(error: FeoxError) -> rustler::Error {
     rustler::Error::Term(Box::new(to_atom(&error)))
 }
+
+/// A `rustler::Error` encoding `{:error, :out_of_memory}`, for use when a
+/// native allocation (e.g. `OwnedBinary::new`) fails outside of any
+/// `feoxdb::FeoxError` path.
+pub fn out_of_memory_error() -> rustler::Error {
+    rustler::Error::Term(Box::new(out_of_memory()))
+}
