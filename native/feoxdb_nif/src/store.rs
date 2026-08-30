@@ -70,7 +70,7 @@ pub fn flush(resource: ResourceArc<StoreResource>) -> Result<Atom, Error> {
     Ok(rustler::types::atom::ok())
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn get<'a>(
     env: Env<'a>,
     resource: ResourceArc<StoreResource>,
@@ -80,7 +80,7 @@ pub fn get<'a>(
     owned_binary(env, &value)
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn insert(
     resource: ResourceArc<StoreResource>,
     key: Binary,
@@ -99,7 +99,7 @@ pub fn insert(
     result.map_err(to_nif_error)
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn delete(resource: ResourceArc<StoreResource>, key: Binary) -> Result<Atom, Error> {
     resource.0.delete(key.as_slice()).map_err(to_nif_error)?;
     Ok(rustler::types::atom::ok())
@@ -144,7 +144,7 @@ pub fn ttl(resource: ResourceArc<StoreResource>, key: Binary) -> Result<Option<u
     resource.0.get_ttl(key.as_slice()).map_err(to_nif_error)
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn update_ttl(
     resource: ResourceArc<StoreResource>,
     key: Binary,
@@ -157,13 +157,13 @@ pub fn update_ttl(
     Ok(rustler::types::atom::ok())
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn persist(resource: ResourceArc<StoreResource>, key: Binary) -> Result<Atom, Error> {
     resource.0.persist(key.as_slice()).map_err(to_nif_error)?;
     Ok(rustler::types::atom::ok())
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn increment(
     resource: ResourceArc<StoreResource>,
     key: Binary,
@@ -175,7 +175,7 @@ pub fn increment(
         .map_err(to_nif_error)
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn compare_and_swap(
     resource: ResourceArc<StoreResource>,
     key: Binary,
@@ -188,7 +188,7 @@ pub fn compare_and_swap(
         .map_err(to_nif_error)
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn json_patch(
     resource: ResourceArc<StoreResource>,
     key: Binary,
