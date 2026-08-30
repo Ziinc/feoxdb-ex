@@ -18,11 +18,19 @@
 #      `StoreResource`'s `RefUnwindSafe` impl in store.rs); NIF code
 #      should convert errors to `Result`/`NifResult` instead of panicking.
 #
-# Known pre-existing findings at the time these rules were added (see PR
-# description for details): several `#[rustler::nif]` functions in
-# store.rs predate this rule and do not yet specify `schedule`, and there
-# is one pre-existing `.expect(...)` in `owned_binary` (store.rs). These
-# are flagged intentionally so they can be triaged, but are not blockers
-# for this PR.
+# History: when these rules were first added, several `#[rustler::nif]`
+# functions in store.rs predated the schedule rule and did not yet specify
+# `schedule`, and there was one pre-existing `.expect(...)` in
+# `owned_binary` (store.rs). By the time this branch was rebased onto
+# `main`, a separate PR had already moved every disk-touching NIF
+# (`get`/`insert`/`delete`/`json_patch`/`compare_and_swap`/`persist`/
+# `update_ttl`/`increment`, plus `flush`/`range`) onto
+# `schedule = "DirtyIo"`, and another PR had removed the `owned_binary`
+# `.expect(...)` panic entirely. The remaining metadata-only NIFs
+# (`open`, `member`, `size`, `memory_usage`, `ttl`, `stats`) were given an
+# explicit `schedule = "Normal"` (or `"DirtyIo"` for `open`, which can
+# perform disk I/O when a `path:` is configured) so the schedule rule
+# passes cleanly rather than by accident. As of this rebase both rules
+# report zero findings; see the PR description for the up-to-date status.
 ruleDirs:
   - rules

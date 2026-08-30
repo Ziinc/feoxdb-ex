@@ -54,7 +54,7 @@ fn owned_binary<'a>(env: Env<'a>, bytes: &[u8]) -> Result<Binary<'a>, Error> {
     Ok(Binary::from_owned(owned, env))
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn open(
     path: Option<String>,
     file_size: Option<u64>,
@@ -94,7 +94,7 @@ pub fn open(
 /// relying solely on GC of the resource reference. Idempotent: calling it
 /// more than once, or from more than one process, simply returns `:ok`
 /// without error.
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn close(resource: ResourceArc<StoreResource>) -> Atom {
     let mut guard = resource
         .0
@@ -147,17 +147,17 @@ pub fn delete(resource: ResourceArc<StoreResource>, key: Binary) -> Result<Atom,
     Ok(rustler::types::atom::ok())
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "Normal")]
 pub fn member(resource: ResourceArc<StoreResource>, key: Binary) -> Result<bool, Error> {
     Ok(resource.get()?.contains_key(key.as_slice()))
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "Normal")]
 pub fn size(resource: ResourceArc<StoreResource>) -> Result<usize, Error> {
     Ok(resource.get()?.len())
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "Normal")]
 pub fn memory_usage(resource: ResourceArc<StoreResource>) -> Result<usize, Error> {
     Ok(resource.get()?.memory_usage())
 }
@@ -181,7 +181,7 @@ pub fn range<'a>(
         .collect()
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "Normal")]
 pub fn ttl(resource: ResourceArc<StoreResource>, key: Binary) -> Result<Option<u64>, Error> {
     resource
         .get()?
@@ -249,7 +249,7 @@ pub fn json_patch(
     Ok(rustler::types::atom::ok())
 }
 
-#[rustler::nif]
+#[rustler::nif(schedule = "Normal")]
 pub fn stats<'a>(env: Env<'a>, resource: ResourceArc<StoreResource>) -> NifResult<Term<'a>> {
     let snapshot = resource.get()?.stats();
 

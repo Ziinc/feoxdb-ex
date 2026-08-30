@@ -43,3 +43,11 @@ rule:
         regex: 'schedule'
 files:
   - "**/*.rs"
+
+# Note: a bare `#[rustler::nif(...)]` triggers this rule whether or not the
+# NIF is actually cheap. Metadata-only NIFs that only touch in-memory
+# structures (e.g. `member`/`size`/`memory_usage`/`ttl`/`stats` in
+# store.rs) should still declare `schedule = "Normal"` explicitly to
+# document that the choice is deliberate rather than a silent default —
+# this rule is about "don't silently default", not "everything must be
+# dirty".

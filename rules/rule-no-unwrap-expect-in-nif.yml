@@ -13,10 +13,11 @@
 # directly annotated with `#[cfg(test)]`, which is the convention this
 # codebase would use for inline test modules.
 #
-# Known pre-existing finding: `owned_binary` in store.rs currently contains
-# `.expect("allocation failed")`. This predates the rule and is
-# intentionally still flagged so it can be triaged/fixed separately; it is
-# not a blocker for the PR that introduces this rule.
+# History: `owned_binary` in store.rs used to contain
+# `.expect("allocation failed")` when this rule was first written. That
+# panic was removed by a separate PR (it now returns
+# `{:error, :out_of_memory}` via `out_of_memory_error` instead), so as of
+# this branch's rebase onto `main` this rule reports zero findings.
 id: no-unwrap-expect-in-nif
 language: rust
 severity: warning
