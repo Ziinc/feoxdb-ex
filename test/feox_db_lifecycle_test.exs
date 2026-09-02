@@ -6,9 +6,10 @@ defmodule FeoxDBLifecycleTest do
       released once the last Elixir reference to it is garbage collected
       (there is no explicit `close/1` in this API yet -- cleanup is purely
       reference-count based, via Rustler's resource destructor)
-    * oversized key/value rejection (`:invalid_key_size` / `:invalid_value_size`,
+    * oversized key/value rejection (`:key_too_large` / `:value_too_large`,
       per the upstream `feoxdb` crate's `MAX_KEY_SIZE` / `MAX_VALUE_SIZE`)
-    * `range/4` with a very large `limit`
+    * `range/4` with a `limit` at, and beyond, `FeoxDB`'s own cap
+      (`:limit_too_large`)
     * `increment/3` near `i64` overflow boundaries
   """
 
@@ -89,13 +90,13 @@ defmodule FeoxDBLifecycleTest do
     test "insert/4 rejects a key larger than the maximum key size", %{store: store} do
       oversized_key = String.duplicate("k", @max_key_size + 1)
 
-      assert {:error, :invalid_key_size} = FeoxDB.insert(store, oversized_key, "value")
+      assert {:error, :key_too_large} = FeoxDB.insert(store, oversized_key, "value")
     end
 
     test "insert/4 rejects a value larger than the maximum value size", %{store: store} do
       oversized_value = String.duplicate("v", @max_value_size + 1)
 
-      assert {:error, :invalid_value_size} = FeoxDB.insert(store, "key", oversized_value)
+      assert {:error, :value_too_large} = FeoxDB.insert(store, "key", oversized_value)
     end
 
     test "insert/4 accepts a key at exactly the maximum key size", %{store: store} do
@@ -126,16 +127,23 @@ defmodule FeoxDBLifecycleTest do
       {:ok, store: store}
     end
 
-    test "a limit far larger than the record count returns only the matching records", %{
-      store: store
-    } do
-      assert {:ok, pairs} = FeoxDB.range(store, "user:001", "user:050", 1_000_000)
+    test "a limit far larger than the record count, but within the cap, returns only the matching records",
+         %{store: store} do
+      assert {:ok, pairs} = FeoxDB.range(store, "user:001", "user:050", 9_999)
       assert length(pairs) == 50
     end
 
-    test "a limit at the maximum positive integer does not error", %{store: store} do
-      assert {:ok, pairs} = FeoxDB.range(store, "user:001", "user:050", @i64_max)
+    test "a limit at the maximum allowed value does not error", %{store: store} do
+      assert {:ok, pairs} = FeoxDB.range(store, "user:001", "user:050", 10_000)
       assert length(pairs) == 50
+    end
+
+    test "a limit exceeding the maximum allowed value is rejected", %{store: store} do
+      assert {:error, :limit_too_large} = FeoxDB.range(store, "user:001", "user:050", 10_001)
+    end
+
+    test "a limit at the maximum positive integer is rejected", %{store: store} do
+      assert {:error, :limit_too_large} = FeoxDB.range(store, "user:001", "user:050", @i64_max)
     end
   end
 
