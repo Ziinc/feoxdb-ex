@@ -16,7 +16,7 @@ defmodule FeoxDB.MixProject do
       package: package(),
       docs: docs(),
       dialyzer: [
-        plt_add_apps: [:mix],
+        plt_add_apps: [:mix, :credo],
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"}
       ],
       source_url: @source_url
