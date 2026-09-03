@@ -29,7 +29,11 @@
           {Credo.Check.Refactor.Nesting, []},
 
           {Credo.Check.Warning.IExPry, []},
-          {Credo.Check.Warning.IoInspect, []}
+          {Credo.Check.Warning.IoInspect, []},
+
+          # Custom checks (see `credo_checks/`).
+          {FeoxDB.CredoChecks.NoUnsafeAtomConversion, []},
+          {FeoxDB.CredoChecks.NativeCallValidation, []}
         ]
       }
     }
