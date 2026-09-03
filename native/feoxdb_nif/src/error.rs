@@ -5,6 +5,7 @@ rustler::atoms! {
     unsupported,
     not_implemented,
     timeout,
+    closed,
 
     // PRD section 6.3 error mapping
     not_found,

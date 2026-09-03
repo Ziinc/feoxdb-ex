@@ -309,6 +309,44 @@ defmodule FeoxDBTest do
     end
   end
 
+  describe "close/1" do
+    test "releases the store's resources and returns :ok" do
+      store = FeoxDB.open!()
+      assert :ok = FeoxDB.close(store)
+    end
+
+    test "is idempotent: closing twice is safe" do
+      store = FeoxDB.open!()
+      assert :ok = FeoxDB.close(store)
+      assert :ok = FeoxDB.close(store)
+    end
+
+    test "operations after close/1 return {:error, :closed} instead of crashing" do
+      store = FeoxDB.open!()
+      :ok = FeoxDB.insert(store, "key", "value")
+      assert :ok = FeoxDB.close(store)
+
+      assert {:error, :closed} = FeoxDB.get(store, "key")
+      assert {:error, :closed} = FeoxDB.insert(store, "key", "value")
+      assert {:error, :closed} = FeoxDB.delete(store, "key")
+      assert {:error, :closed} = FeoxDB.member?(store, "key")
+      assert {:error, :closed} = FeoxDB.size(store)
+      assert {:error, :closed} = FeoxDB.memory_usage(store)
+      assert {:error, :closed} = FeoxDB.stats(store)
+      assert {:error, :closed} = FeoxDB.flush(store)
+    end
+
+    test "closes a disk-backed store cleanly" do
+      path = tmp_path()
+      on_exit(fn -> File.rm(path) end)
+
+      {:ok, store} = FeoxDB.open(path: path, file_size: 10 * 1024 * 1024, enable_ttl: true)
+      :ok = FeoxDB.insert(store, "key", "value")
+      assert :ok = FeoxDB.close(store)
+      assert {:error, :closed} = FeoxDB.get(store, "key")
+    end
+  end
+
   defp tmp_path do
     Path.join(System.tmp_dir!(), "feox_db_test_#{System.unique_integer([:positive])}.feox")
   end
