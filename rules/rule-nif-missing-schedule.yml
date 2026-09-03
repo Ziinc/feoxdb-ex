@@ -1,0 +1,53 @@
+# Flags `#[rustler::nif(...)]` attributes that do not declare an explicit
+# `schedule = "..."` argument (e.g. `schedule = "DirtyIo"` / `"DirtyCpu"`).
+#
+# Rustler defaults unscheduled NIFs to normal (non-dirty) scheduling, which
+# silently allows a NIF to block a BEAM scheduler thread if the underlying
+# call can be slow (disk I/O, long scans, etc). `flush` and `range` in
+# native/feoxdb_nif/src/store.rs already opt into
+# `schedule = "DirtyIo"` — that's the pattern new NIFs should follow when
+# they might block.
+#
+# Implementation note / limitation: ast-grep's Rust grammar does not expose
+# a clean AST-level way to say "attribute_item whose macro args do not
+# contain a `schedule = ...` key/value pair" using only `pattern`/`has`,
+# because a bare `#[rustler::nif]` (no parens at all) and
+# `#[rustler::nif(capture_env = true)]` have different shapes and the
+# "does this token tree contain the identifier `schedule`" check is easiest
+# to express as a text regex over the whole attribute node rather than a
+# structural match. This rule therefore matches on `kind: attribute_item`
+# plus a regex over the attribute's own text, which is precise enough in
+# practice (an attribute can't accidentally contain the substring
+# "schedule" some other way) but will not catch a NIF whose `schedule`
+# argument is built via macro expansion/aliasing rather than written
+# literally in the attribute.
+id: nif-missing-schedule
+language: rust
+severity: warning
+message: >-
+  #[rustler::nif(...)] is missing an explicit `schedule = "..."` argument.
+  Rustler defaults to normal (non-dirty) scheduling, which can block a BEAM
+  scheduler thread if this NIF's underlying call may be slow. Add
+  `schedule = "DirtyIo"` (matching `flush`/`range` in store.rs) or
+  `schedule = "DirtyCpu"` if this NIF can block, or otherwise explicitly
+  confirm it is always fast enough for normal scheduling.
+note: >-
+  This is a text-regex-based approximation over the attribute node (see the
+  comment at the top of this file); it cannot fully distinguish
+  structurally where `schedule` is declared vs. merely mentioned.
+rule:
+  all:
+    - kind: attribute_item
+    - regex: 'rustler\s*::\s*nif'
+    - not:
+        regex: 'schedule'
+files:
+  - "**/*.rs"
+
+# Note: a bare `#[rustler::nif(...)]` triggers this rule whether or not the
+# NIF is actually cheap. Metadata-only NIFs that only touch in-memory
+# structures (e.g. `member`/`size`/`memory_usage`/`ttl`/`stats` in
+# store.rs) should still declare `schedule = "Normal"` explicitly to
+# document that the choice is deliberate rather than a silent default —
+# this rule is about "don't silently default", not "everything must be
+# dirty".

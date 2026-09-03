@@ -1,0 +1,36 @@
+# ast-grep configuration (https://ast-grep.github.io/)
+#
+# These rules exist to catch two Rust-side risk patterns that have bitten
+# this codebase before at review/CI time, before they land on `main`:
+#
+#   1. `rule-nif-missing-schedule.yml` — a `#[rustler::nif(...)]` function
+#      that does not declare an explicit `schedule = "..."` attribute.
+#      Rustler silently defaults unscheduled NIFs to normal (non-dirty)
+#      scheduling, which is dangerous for any NIF whose underlying
+#      `FeoxStore` call can block (disk I/O, large scans, etc.) since it
+#      can stall the whole BEAM scheduler thread. `flush`/`range` already
+#      opt into `schedule = "DirtyIo"` — new NIFs should make the same
+#      scheduling decision explicit rather than relying on the default.
+#
+#   2. `rule-no-unwrap-expect-in-nif.yml` — `.unwrap()` / `.expect(...)`
+#      calls in `native/feoxdb_nif/src/`. A panic unwinding out of a NIF
+#      call is a known risk in this codebase (see the comment on
+#      `StoreResource`'s `RefUnwindSafe` impl in store.rs); NIF code
+#      should convert errors to `Result`/`NifResult` instead of panicking.
+#
+# History: when these rules were first added, several `#[rustler::nif]`
+# functions in store.rs predated the schedule rule and did not yet specify
+# `schedule`, and there was one pre-existing `.expect(...)` in
+# `owned_binary` (store.rs). By the time this branch was rebased onto
+# `main`, a separate PR had already moved every disk-touching NIF
+# (`get`/`insert`/`delete`/`json_patch`/`compare_and_swap`/`persist`/
+# `update_ttl`/`increment`, plus `flush`/`range`) onto
+# `schedule = "DirtyIo"`, and another PR had removed the `owned_binary`
+# `.expect(...)` panic entirely. The remaining metadata-only NIFs
+# (`open`, `member`, `size`, `memory_usage`, `ttl`, `stats`) were given an
+# explicit `schedule = "Normal"` (or `"DirtyIo"` for `open`, which can
+# perform disk I/O when a `path:` is configured) so the schedule rule
+# passes cleanly rather than by accident. As of this rebase both rules
+# report zero findings; see the PR description for the up-to-date status.
+ruleDirs:
+  - rules

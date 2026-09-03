@@ -50,3 +50,9 @@ jobs:
 
       - name: Run Sobelow
         run: mix sobelow --exit
+
+      - name: Install ast-grep
+        run: cargo install ast-grep --locked
+
+      - name: Run ast-grep (NIF safety rules)
+        run: ast-grep scan --config sgconfig.yml --error
