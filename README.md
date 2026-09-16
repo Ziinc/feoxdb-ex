@@ -50,21 +50,24 @@ Keys are limited to 100 KB and values to 4 MB (mirroring the underlying
 
 ## Benchmarks
 
-Preliminary, single-container numbers (median latency, 20K keys / 64B
-values) from `bench/run.exs` — not a substitute for a dedicated-hardware
-run. See [`bench/REPORT.md`](bench/REPORT.md) for full methodology and
-caveats.
+Preliminary, single-container numbers (median latency, `parallel: 1`,
+20K keys / 64B values) from `bench/run.exs` — not a substitute for a
+dedicated-hardware run. See [`bench/REPORT.md`](bench/REPORT.md) for
+full methodology and caveats.
 
-| Workload | `:ets` | feox_memory | feox_persistent | cachex | cubdb |
-|---|---|---|---|---|---|
-| Random read | 80.8 μs | 83.3 μs | 88.3 μs | 83.8 μs | 198.5 μs |
-| Write only | 1.46 μs | 1.67 μs | 24.5 μs | 2.25 μs | 315.9 μs |
-| Mixed 80/20 | 79.6 μs | 87.1 μs | 90.2 μs | 81.1 μs | 209.1 μs |
-| Delete | 0.35 μs | 0.59 μs | 0.79 μs | 0.88 μs | 89.7 μs |
+| Workload | `:ets` | feox_memory | feox_persistent | cachex | dets | mnesia | cubdb |
+|---|---|---|---|---|---|---|---|
+| Random read | 79.8 μs | 87.3 μs | 95.9 μs | 83.0 μs | 113.7 μs | 79.8 μs | 185.3 μs |
+| Write only | 1.27 μs | 5.48 μs | 24.8 μs | 1.85 μs | 2.28 μs | 3.60 μs | 233.4 μs |
+| Mixed 80/20 | 77.9 μs | 86.0 μs | 86.7 μs | 79.3 μs | 118.8 μs | 88.2 μs | 202.7 μs |
+| Delete | 0.23 μs | 2.87 μs | 3.05 μs | 0.69 μs | 1.98 μs | 2.04 μs | 183.3 μs |
 
-`feoxdb_ex` tracks raw `:ets` closely and stays well ahead of CubDB;
-`feox_persistent`'s write-only number is affected by write-buffer
-backpressure under sustained load (see the report for details).
+`feoxdb_ex` tracks raw `:ets` reasonably closely and stays well ahead
+of CubDB; `mnesia` here is its cheapest, least-safe `dirty_*` API, not
+a transactional comparison. `feox_persistent`'s write-only number is
+affected by write-buffer backpressure under sustained load, and
+`dets`'s own write buffering shows up as a long tail rather than in its
+median (see the report for details).
 
 ## License
 
