@@ -40,6 +40,10 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      - name: Install Rust target
+        if: '!matrix.job.use-cross'
+        run: rustup target add ${{ matrix.job.target }}
+
       - name: Build precompiled NIF
         uses: philss/rustler-precompiled-action@v1.1.5
         id: build-crate
