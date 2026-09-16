@@ -40,6 +40,12 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      - name: Use GNU tar on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install gnu-tar
+          echo "$(brew --prefix gnu-tar)/libexec/gnubin" >> "$GITHUB_PATH"
+
       - name: Build precompiled NIF
         uses: philss/rustler-precompiled-action@v1.1.5
         id: build-crate
