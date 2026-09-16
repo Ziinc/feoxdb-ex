@@ -25,15 +25,15 @@ jobs:
         nif: ["2.15"]
         job:
           # Tier 1 (PRD section 8.3): must build cleanly on every push.
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04, use-cross: true }
-          - { target: x86_64-unknown-linux-musl, os: ubuntu-22.04, use-cross: true }
-          - { target: aarch64-unknown-linux-musl, os: ubuntu-22.04, use-cross: true }
-          - { target: x86_64-apple-darwin, os: macos-13 }
-          - { target: aarch64-apple-darwin, os: macos-14 }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-latest, use-cross: true }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest, use-cross: true }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-latest, use-cross: true }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: aarch64-apple-darwin, os: macos-latest }
           # Tier 2 (PRD section 8.3): best effort, allowed to fail the job
           # without failing the release.
-          - { target: x86_64-pc-windows-msvc, os: windows-2022 }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
 
     steps:
       - uses: actions/checkout@v4
