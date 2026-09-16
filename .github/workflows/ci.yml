@@ -3,7 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - "lib/**"
+      - "test/**"
+      - "**/*.exs"
   pull_request:
+    paths:
+      - "lib/**"
+      - "test/**"
+      - "**/*.exs"
 
 permissions:
   contents: read
