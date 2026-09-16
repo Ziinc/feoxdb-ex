@@ -68,7 +68,7 @@ defmodule FeoxDB.MixProject do
         "README.md",
         "LICENSE"
       ],
-      licenses: ["Apache-2.0"],
+      licenses: ["MIT"],
       links: %{"GitHub" => @source_url}
     ]
   end
