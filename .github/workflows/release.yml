@@ -118,6 +118,7 @@ jobs:
         with:
           commit-message: "Update NIF checksums for ${{ env.RELEASE_TAG }}"
           branch: update-checksums-${{ env.RELEASE_TAG }}
+          base: main
           title: "Update NIF checksums for ${{ env.RELEASE_TAG }}"
           body: |
             Regenerated `checksum-Elixir.FeoxDB.Native.exs` after publishing
