@@ -2,21 +2,9 @@
 
 Elixir bindings for [FeOxDB](https://feoxdb.com), an embedded key-value store
 written in Rust that keeps hot data in memory and writes to disk in the
-background. See [`docs/PRD.md`](docs/PRD.md) for the full design.
+background.
 
-## Status
-
-All 7 PRD milestones have a first pass implemented:
-
-- Full FeOxDB API (lifecycle, basic operations, ranges, TTL, atomics,
-  JSON patch, stats) through Rustler, Dialyzer-clean, with published docs.
-- Property, concurrency, and soak tests (`mix test`; see
-  [Development](#development) below for the soak test).
-- CI (`.github/workflows/ci.yml`) and a release workflow
-  (`.github/workflows/release.yml`) that builds precompiled NIFs for
-  every Tier 1 target (plus best-effort Windows) on a tagged release.
-- A Benchee-based benchmark harness comparing `feoxdb_ex` against CubDB,
-  Cachex, and raw `:ets` (see [`bench/`](bench)).
+Full FeOxDB API through Rustler precompiled NIFs
 
 Precompiled release artifacts haven't actually been published yet (no
 `v*` tag has been pushed), so the NIF still always builds from source —
@@ -35,8 +23,6 @@ def deps do
   ]
 end
 ```
-
-Building from source requires a Rust toolchain (stable, 2021 edition).
 
 ## Usage
 
@@ -58,51 +44,11 @@ the garbage collector: it deterministically stops the store's background
 writer/TTL sweeper threads and releases its resources, which matters most
 for disk-backed stores.
 
-See the `FeoxDB` module docs for the full API: ranges, TTL, atomic
-increment/compare-and-swap, and RFC 6902 JSON patch.
-
 Keys are limited to 100 KB and values to 4 MB (mirroring the underlying
-`feoxdb` Rust crate's internal limits). `FeoxDB` checks these limits in
-Elixir before calling into native code and returns
-`{:error, :key_too_large}` / `{:error, :value_too_large}` for oversized
-input, rather than relying solely on that crate to reject it.
+`feoxdb` Rust crate's internal limits).
 
-## Development
 
-```
-mix deps.get
-mix test
-```
+## License
 
-The Rust crate lives under `native/feoxdb_nif`; `mix compile` builds it
-automatically via Rustler.
+MIT
 
-Other checks used in CI:
-
-```
-mix format --check-formatted
-cargo fmt --manifest-path native/feoxdb_nif/Cargo.toml -- --check
-cargo clippy --manifest-path native/feoxdb_nif/Cargo.toml --release -- -D warnings
-mix dialyzer
-mix docs
-ast-grep scan --config sgconfig.yml --error
-```
-
-`sgconfig.yml` and `rules/` configure [ast-grep](https://ast-grep.github.io/)
-checks over `native/feoxdb_nif/src/`: they catch `#[rustler::nif(...)]`
-functions that omit an explicit `schedule = "..."` (Rustler silently
-defaults to non-dirty scheduling, which can block a BEAM scheduler thread)
-and `.unwrap()`/`.expect(...)` calls in NIF code (a panic unwinding out of a
-NIF is a known risk here). See the comments in `sgconfig.yml` and
-`rules/*.yml` for details and known limitations.
-
-The soak test (PRD milestone 3) is excluded from the default `mix test`
-run since it's meant to run for hours, not seconds:
-
-```
-mix test --only soak test/feox_db_soak_test.exs
-FEOXDB_SOAK_DURATION_MS=86400000 mix test --only soak --timeout :infinity test/feox_db_soak_test.exs
-```
-
-See [`bench/README.md`](bench/README.md) for the benchmark harness and
-[`bench/REPORT.md`](bench/REPORT.md) for the latest results.
