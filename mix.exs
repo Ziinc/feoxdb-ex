@@ -66,10 +66,9 @@ defmodule FeoxDB.MixProject do
         "checksum-Elixir.FeoxDB.Native.exs",
         "mix.exs",
         "README.md",
-        "CHANGELOG.md",
         "LICENSE"
       ],
-      licenses: ["Apache-2.0"],
+      licenses: ["MIT"],
       links: %{"GitHub" => @source_url}
     ]
   end
