@@ -44,6 +44,10 @@ jobs:
         if: '!matrix.job.use-cross'
         run: rustup target add ${{ matrix.job.target }}
 
+      - name: Strip leading 'v' from release tag
+        id: strip_v
+        run: echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
       - name: Build precompiled NIF
         uses: philss/rustler-precompiled-action@v1.1.5
         id: build-crate
@@ -51,7 +55,7 @@ jobs:
         with:
           project-name: feoxdb_nif
           project-dir: native/feoxdb_nif
-          project-version: ${{ env.RELEASE_TAG }}
+          project-version: ${{ steps.strip_v.outputs.version }}
           target: ${{ matrix.job.target }}
           nif-version: ${{ matrix.nif }}
           # philss/rustler-precompiled-action gates its "download cross" step on
