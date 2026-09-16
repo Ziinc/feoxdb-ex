@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to (re)build NIFs for, e.g. v0.1.0"
+        required: true
 
 permissions:
   contents: write
@@ -12,6 +17,8 @@ jobs:
   build_release:
     name: NIF ${{ matrix.nif }} - ${{ matrix.job.target }} (${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +37,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Build precompiled NIF
         uses: philss/rustler-precompiled-action@v1.1.4
@@ -38,7 +47,7 @@ jobs:
         with:
           project-name: feoxdb_nif
           project-dir: native/feoxdb_nif
-          project-version: ${{ github.ref_name }}
+          project-version: ${{ env.RELEASE_TAG }}
           target: ${{ matrix.job.target }}
           nif-version: ${{ matrix.nif }}
           use-cross: ${{ matrix.job.use-cross || false }}
@@ -55,14 +64,19 @@ jobs:
         if: steps.build-crate.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: ${{ steps.build-crate.outputs.file-path }}
 
   checksum:
     name: Regenerate checksum file
     needs: build_release
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: erlef/setup-beam@v1
         with:
@@ -83,16 +97,17 @@ jobs:
       - name: Upload checksum file as a release asset
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: checksum-Elixir.FeoxDB.Native.exs
 
       - name: Open a PR to commit the checksum file
         uses: peter-evans/create-pull-request@v6
         with:
-          commit-message: "Update NIF checksums for ${{ github.ref_name }}"
-          branch: update-checksums-${{ github.ref_name }}
-          title: "Update NIF checksums for ${{ github.ref_name }}"
+          commit-message: "Update NIF checksums for ${{ env.RELEASE_TAG }}"
+          branch: update-checksums-${{ env.RELEASE_TAG }}
+          title: "Update NIF checksums for ${{ env.RELEASE_TAG }}"
           body: |
             Regenerated `checksum-Elixir.FeoxDB.Native.exs` after publishing
-            the `${{ github.ref_name }}` release artifacts (PRD section 8.2).
+            the `${{ env.RELEASE_TAG }}` release artifacts (PRD section 8.2).
             This file must be committed before publishing to Hex.
           add-paths: checksum-Elixir.FeoxDB.Native.exs
