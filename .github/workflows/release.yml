@@ -41,7 +41,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
 
       - name: Build precompiled NIF
-        uses: philss/rustler-precompiled-action@v1.1.4
+        uses: philss/rustler-precompiled-action@v1.1.5
         id: build-crate
         continue-on-error: ${{ matrix.job.target == 'x86_64-pc-windows-msvc' }}
         with:
