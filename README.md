@@ -1,4 +1,4 @@
-# FeoxDB
+# feoxdb-ex
 
 Elixir bindings for [FeOxDB](https://feoxdb.com), an embedded key-value store
 written in Rust that keeps hot data in memory and writes to disk in the
