@@ -40,12 +40,6 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Use GNU tar on macOS
-        if: runner.os == 'macOS'
-        run: |
-          brew install gnu-tar
-          echo "$(brew --prefix gnu-tar)/libexec/gnubin" >> "$GITHUB_PATH"
-
       - name: Build precompiled NIF
         uses: philss/rustler-precompiled-action@v1.1.5
         id: build-crate
@@ -56,7 +50,12 @@ jobs:
           project-version: ${{ env.RELEASE_TAG }}
           target: ${{ matrix.job.target }}
           nif-version: ${{ matrix.nif }}
-          use-cross: ${{ matrix.job.use-cross || false }}
+          # philss/rustler-precompiled-action gates its "download cross" step on
+          # `inputs.use-cross`, but composite-action inputs are always strings,
+          # so the literal string "false" is truthy and the step (which only
+          # has a Linux cross binary) runs on every OS, crashing with ENOEXEC
+          # on macOS/Windows. Pass an empty string (falsy) when cross isn't needed.
+          use-cross: ${{ matrix.job.use-cross && 'true' || '' }}
 
       - name: Upload artifact
         if: steps.build-crate.outcome == 'success'
