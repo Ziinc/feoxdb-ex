@@ -134,6 +134,93 @@ defmodule Bench.System.Cachex do
   def close({_name, pid}), do: Supervisor.stop(pid)
 end
 
+defmodule Bench.System.Dets do
+  @moduledoc "`:dets`, the BEAM's built-in disk-based term store, included as a persistent-mode comparison point."
+  @behaviour Bench.System
+
+  @impl true
+  def open(opts) do
+    name = Keyword.fetch!(opts, :name)
+    path = Keyword.fetch!(opts, :path)
+    File.rm(path)
+    {:ok, ^name} = :dets.open_file(name, file: String.to_charlist(path), type: :set)
+    name
+  end
+
+  @impl true
+  def get(table, key) do
+    case :dets.lookup(table, key) do
+      [{^key, value}] -> {:ok, value}
+      [] -> {:error, :not_found}
+    end
+  end
+
+  @impl true
+  def insert(table, key, value) do
+    :dets.insert(table, {key, value})
+    :ok
+  end
+
+  @impl true
+  def delete(table, key) do
+    :dets.delete(table, key)
+    :ok
+  end
+
+  @impl true
+  def flush(table), do: :dets.sync(table)
+
+  @impl true
+  def close(table), do: :dets.close(table)
+end
+
+defmodule Bench.System.Mnesia do
+  @moduledoc "`:mnesia`, disk_copies mode, included as a persistent-mode comparison point."
+  @behaviour Bench.System
+
+  @impl true
+  def open(opts) do
+    table = Keyword.fetch!(opts, :table)
+    dir = Keyword.fetch!(opts, :dir)
+    File.rm_rf(dir)
+    File.mkdir_p!(dir)
+    :application.stop(:mnesia)
+    :mnesia.create_schema([node()], dir: String.to_charlist(dir))
+    :application.start(:mnesia)
+    {:atomic, :ok} = :mnesia.create_table(table, disc_copies: [node()], type: :set)
+    table
+  end
+
+  @impl true
+  def get(table, key) do
+    case :mnesia.dirty_read(table, key) do
+      [{^table, ^key, value}] -> {:ok, value}
+      [] -> {:error, :not_found}
+    end
+  end
+
+  @impl true
+  def insert(table, key, value) do
+    :mnesia.dirty_write({table, key, value})
+    :ok
+  end
+
+  @impl true
+  def delete(table, key) do
+    :mnesia.dirty_delete(table, key)
+    :ok
+  end
+
+  @impl true
+  def flush(_table), do: :ok
+
+  @impl true
+  def close(table) do
+    :mnesia.delete_table(table)
+    :application.stop(:mnesia)
+  end
+end
+
 defmodule Bench.System.Ets do
   @moduledoc "Raw :ets, the cheapest possible BEAM-native operation (PRD section 9.1 control)."
   @behaviour Bench.System

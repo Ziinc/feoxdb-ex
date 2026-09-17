@@ -25,9 +25,12 @@ defmodule FeoxDB.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: extra_applications(Mix.env())
     ]
   end
+
+  defp extra_applications(:bench), do: [:logger, :mnesia]
+  defp extra_applications(_env), do: [:logger]
 
   # `credo_checks/` holds our custom Credo checks (see `.credo.exs`). They
   # depend on `Credo.Check`, which is only available in `:dev`/`:test`

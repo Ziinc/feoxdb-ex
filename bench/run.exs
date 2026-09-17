@@ -16,7 +16,13 @@ defmodule Bench.Run do
         {Bench.System.FeoxPersistent, [path: Path.join(bench_tmp_dir(), "feoxdb_bench.feox")]},
       "cubdb" => {Bench.System.CubDB, [path: Path.join(bench_tmp_dir(), "cubdb_bench")]},
       "cachex" => {Bench.System.Cachex, [name: :bench_cache]},
-      "ets" => {Bench.System.Ets, [name: :bench_ets]}
+      "ets" => {Bench.System.Ets, [name: :bench_ets]},
+      "dets" =>
+        {Bench.System.Dets,
+         [name: :bench_dets, path: Path.join(bench_tmp_dir(), "dets_bench.dets")]},
+      "mnesia" =>
+        {Bench.System.Mnesia,
+         [table: :bench_mnesia, dir: Path.join(bench_tmp_dir(), "mnesia_bench")]}
     }
   end
 

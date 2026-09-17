@@ -4,8 +4,9 @@
 section 9.6 dedicated-hardware benchmark.** It exists to prove the
 harness (`bench/run.exs`) produces sane, directionally-correct numbers,
 and to give a rough sense of where `feoxdb_ex` sits relative to CubDB,
-Cachex, and raw `:ets`. It is not a substitute for running the harness
-on real, controlled hardware before publishing performance claims.
+Cachex, `:dets`, `:mnesia`, and raw `:ets`. It is not a substitute for
+running the harness on real, controlled hardware before publishing
+performance claims.
 
 ## Environment
 
@@ -14,10 +15,10 @@ on real, controlled hardware before publishing performance claims.
 | Host | Shared CI/sandbox container (not a dedicated benchmark host) |
 | CPU | Intel(R) Xeon(R) Processor @ 2.80GHz, 4 cores |
 | CPU frequency scaling | Not controlled/disabled — a PRD 9.6 requirement this run does not meet |
-| Kernel | `6.18.44-fc-v22` |
+| Kernel | `6.18.44-fc-v33` |
 | OS | Ubuntu 24.04.4 LTS |
-| Filesystem | `feox_persistent`/CubDB data files stored on tmpfs (`/dev/shm`), not a dedicated NVMe/io_uring-capable disk — see caveats below |
-| Elixir / OTP | 1.17.3 / 25 |
+| Filesystem | `feox_persistent`/CubDB/`:dets`/`:mnesia` data files stored on tmpfs (`/dev/shm`), not a dedicated NVMe/io_uring-capable disk — see caveats below |
+| Elixir / OTP | 1.20.4 / 29 |
 | feoxdb crate | 0.6.0, `jemalloc` disabled (see `native/feoxdb_nif/Cargo.toml`) |
 
 ## Configuration
@@ -40,6 +41,11 @@ BENCH_DATASET_SIZE=20000 BENCH_VALUE_SIZE=64 BENCH_CONCURRENCY=1,4 \
 
 - CubDB: `auto_compact: false, auto_file_sync: true` (explicit, not left
   at whatever the library's default happens to be).
+- `:dets`: opened with `type: :set`, `flush/1` calls `:dets.sync/1`.
+- `:mnesia`: table created with `disc_copies: [node()]` (so it's writing
+  to disk, not `ram_copies`) and driven via `:mnesia.dirty_*` operations
+  — the cheapest, least-safe API mnesia offers, included as a
+  best-case-for-mnesia comparison point, not a transactional one.
 - `feox_persistent`: preload is followed by an explicit `FeoxDB.flush/1`
   call, so background write time is counted.
 - Same generated keys/values fed to every system.
@@ -55,17 +61,20 @@ are in the raw output, reproduced further down):
 
 | System | parallel: 1 (median) | parallel: 4 (median) |
 |---|---|---|
-| `:ets` (control) | 80.8 μs | 82.3 μs |
-| feox_memory | 83.3 μs | 84.6 μs |
-| feox_persistent | 88.3 μs | 87.3 μs |
-| cachex | 83.8 μs | 85.3 μs |
-| cubdb | 198.5 μs | 743.9 μs |
+| `:ets` (control) | 79.8 μs | 81.2 μs |
+| mnesia | 79.8 μs | 90.7 μs |
+| cachex | 83.0 μs | 81.2 μs |
+| feox_memory | 87.3 μs | 120.8 μs |
+| feox_persistent | 95.9 μs | 115.6 μs |
+| dets | 113.7 μs | 220.5 μs |
+| cubdb | 185.3 μs | 638.1 μs |
 
-`feoxdb_ex` tracks raw ETS closely at both concurrency levels (within
-~10%) and stays well ahead of CubDB, which does not hold up under
-concurrent readers in this environment. **Note:** at this value size
-(64 bytes, well within the BEAM's small-integer/immediate binary range)
-and dataset size, absolute latencies here (tens of μs) are dominated by
+`feoxdb_ex` tracks raw ETS and mnesia's dirty reads closely at
+`parallel: 1`, but falls behind both `:ets` and `:mnesia` at
+`parallel: 4` in this environment, and stays well ahead of `:dets` and
+CubDB at both levels. **Note:** at this value size (64 bytes, well
+within the BEAM's small-integer/immediate binary range) and dataset
+size, absolute latencies here (tens of μs) are dominated by
 scheduling/measurement overhead in this container, not by the stores
 themselves — the *relative* ordering is the meaningful part of this
 result, not the absolute numbers.
@@ -74,41 +83,49 @@ result, not the absolute numbers.
 
 | System | parallel: 1 (median) | parallel: 4 (median) |
 |---|---|---|
-| `:ets` (control) | 1.46 μs | 1.94 μs |
-| feox_memory | 1.67 μs | 2.35 μs |
-| feox_persistent | 24.5 μs | 2.76 μs |
-| cachex | 2.25 μs | 3.52 μs |
-| cubdb | 315.9 μs | 892.6 μs |
+| `:ets` (control) | 1.27 μs | 2.17 μs |
+| cachex | 1.85 μs | 2.86 μs |
+| dets | 2.28 μs | 10.58 μs |
+| mnesia | 3.60 μs | 7.94 μs |
+| feox_memory | 5.48 μs | 23.9 μs |
+| feox_persistent | 24.8 μs | 28.3 μs |
+| cubdb | 233.4 μs | 1054.0 μs |
 
-`feox_memory` is competitive with `:ets` and faster than Cachex.
+`dets`'s median write is competitive (its own write-buffer/log
+mechanism is also bursty — see its 99th percentile in the raw output
+below, which spikes into the milliseconds under `parallel: 4`).
 `feox_persistent`'s number is noisy (see caveat below on write-buffer
-backpressure) but its median stays in the low single-digit μs range once
-warmed up — the *average* is pulled up by the tail, not the typical case.
+backpressure) but its median stays in the tens-of-μs range once warmed
+up — the *average* is pulled up by the tail, not the typical case.
 
 ### Mixed 80/20 (workload 6)
 
 | System | parallel: 1 (median) | parallel: 4 (median) |
 |---|---|---|
-| `:ets` (control) | 79.6 μs | 82.5 μs |
-| feox_memory | 87.1 μs | 85.5 μs |
-| feox_persistent | 90.2 μs | 89.5 μs |
-| cachex | 81.1 μs | 88.2 μs |
-| cubdb | 209.1 μs | 612.4 μs |
+| `:ets` (control) | 77.9 μs | 79.6 μs |
+| cachex | 79.3 μs | 81.3 μs |
+| feox_memory | 86.0 μs | 117.5 μs |
+| mnesia | 88.2 μs | 88.9 μs |
+| feox_persistent | 86.7 μs | 164.6 μs |
+| dets | 118.8 μs | 262.9 μs |
+| cubdb | 202.7 μs | 681.2 μs |
 
 ### Delete (workload 8)
 
 | System | parallel: 1 (median) | parallel: 4 (median) |
 |---|---|---|
-| `:ets` (control) | 0.35 μs | 1.09 μs |
-| feox_memory | 0.59 μs | 2.13 μs |
-| feox_persistent | 0.79 μs | 2.14 μs |
-| cachex | 0.88 μs | 1.85 μs |
-| cubdb | 89.7 μs | 341.0 μs |
+| `:ets` (control) | 0.23 μs | 0.43 μs |
+| cachex | 0.69 μs | 0.82 μs |
+| mnesia | 2.04 μs | 3.54 μs |
+| dets | 1.98 μs | 8.71 μs |
+| feox_memory | 2.87 μs | 13.3 μs |
+| feox_persistent | 3.05 μs | 9.66 μs |
+| cubdb | 183.3 μs | 262.6 μs |
 
 ## An observed finding: persistent-mode write buffer backpressure
 
-Running this harness produced ~370K `feox: write entry for a N byte key
-has been retried 8 times` warnings on stderr from the `feoxdb` crate
+Running this harness produced `feox: write entry for a N byte key
+has been retried N times` warnings on stderr from the `feoxdb` crate
 during the write-heavy scenarios (write-only, delete) in `feox_persistent`
 mode. This is FeOxDB's own write-buffer logging that it's retrying a
 buffered write, not a crash or data-loss signal, and it explains why
@@ -131,83 +148,93 @@ Section 9.5 scheduler-health methodology (not yet implemented — see
 <summary>Full Benchee console output (click to expand)</summary>
 
 ```
-Benchmarking cachex ...
-Benchmarking cubdb ...
-Benchmarking ets ...
-Benchmarking feox_memory ...
-Benchmarking feox_persistent ...
-
 *** random_read (parallel: 1) ***
 
 Name                      ips        average  deviation         median         99th %
-ets                   12.15 K       82.32 μs    ±28.33%       80.76 μs      144.99 μs
-feox_memory           11.69 K       85.55 μs    ±29.36%       83.34 μs      153.17 μs
-cachex                11.67 K       85.71 μs    ±30.05%       83.80 μs      150.47 μs
-feox_persistent       11.04 K       90.55 μs    ±29.36%       88.31 μs      169.58 μs
-cubdb                  4.86 K      205.55 μs    ±29.30%      198.54 μs      396.83 μs
+ets                   12.34 K       81.04 μs    ±30.20%       79.78 μs      137.93 μs
+mnesia                12.18 K       82.13 μs    ±30.76%       79.81 μs      153.75 μs
+cachex                11.82 K       84.58 μs    ±27.76%       82.98 μs      152.29 μs
+feox_memory           11.12 K       89.97 μs    ±34.58%       87.33 μs      173.20 μs
+feox_persistent       10.19 K       98.14 μs    ±33.01%       95.92 μs      173.98 μs
+dets                   8.50 K      117.62 μs    ±31.27%      113.73 μs      229.33 μs
+cubdb                  5.13 K      194.75 μs    ±38.63%      185.25 μs      381.47 μs
 
 *** write_only (parallel: 1) ***
 
 Name                      ips        average  deviation         median         99th %
-ets                  575.49 K        1.74 μs   ±195.13%        1.46 μs        5.51 μs
-feox_memory          397.96 K        2.51 μs   ±814.56%        1.67 μs        8.57 μs
-cachex               336.21 K        2.97 μs  ±1029.71%        2.25 μs        8.19 μs
-feox_persistent       46.97 K       21.29 μs  ±1225.63%       24.50 μs       81.83 μs
-cubdb                  2.72 K      367.50 μs    ±84.20%      315.93 μs      672.37 μs
+ets                  657.05 K        1.52 μs   ±485.77%        1.27 μs        5.08 μs
+cachex               429.08 K        2.33 μs  ±1236.17%        1.85 μs        6.05 μs
+feox_memory          167.62 K        5.97 μs   ±185.79%        5.48 μs       17.41 μs
+mnesia               155.89 K        6.41 μs   ±549.31%        3.60 μs       36.50 μs
+feox_persistent       36.72 K       27.23 μs   ±196.23%       24.78 μs      127.70 μs
+dets                  16.62 K       60.17 μs  ±1336.53%        2.28 μs       64.49 μs
+cubdb                  3.99 K      250.65 μs    ±85.33%      233.42 μs      404.09 μs
 
 *** mixed_80_20 (parallel: 1) ***
 
 Name                      ips        average  deviation         median         99th %
-ets                   12.27 K       81.50 μs    ±31.43%       79.64 μs      142.11 μs
-cachex                11.94 K       83.77 μs    ±35.45%       81.14 μs      148.70 μs
-feox_memory           10.67 K       93.70 μs   ±324.74%       87.05 μs      188.70 μs
-feox_persistent       10.59 K       94.44 μs    ±66.80%       90.15 μs      174.69 μs
-cubdb                  4.26 K      234.59 μs    ±40.57%      209.05 μs      517.91 μs
+ets                   12.55 K       79.69 μs    ±29.50%       77.87 μs      141.90 μs
+cachex                12.24 K       81.68 μs    ±30.50%       79.27 μs      152.18 μs
+feox_memory           11.37 K       87.97 μs    ±31.82%       86.02 μs      154.88 μs
+mnesia                11.00 K       90.87 μs    ±32.06%       88.24 μs      169.71 μs
+feox_persistent       10.74 K       93.11 μs   ±118.92%       86.69 μs      178.22 μs
+dets                   7.85 K      127.33 μs    ±36.72%      118.75 μs      264.55 μs
+cubdb                  4.41 K      226.72 μs    ±39.90%      202.74 μs      504.15 μs
 
 *** delete (parallel: 1) ***
 
 Name                      ips        average  deviation         median         99th %
-ets                 2603.52 K        0.38 μs   ±174.19%        0.35 μs        0.65 μs
-feox_memory         1195.19 K        0.84 μs  ±1800.94%        0.59 μs        8.01 μs
-cachex               946.56 K        1.06 μs   ±188.50%        0.88 μs        2.36 μs
-feox_persistent      495.97 K        2.02 μs   ±314.14%        0.79 μs       21.30 μs
-cubdb                  9.49 K      105.32 μs    ±56.44%       89.74 μs      252.08 μs
+ets                 3738.37 K        0.27 μs  ±5506.11%        0.23 μs        0.45 μs
+cachex              1275.05 K        0.78 μs   ±223.71%        0.69 μs        1.55 μs
+mnesia               325.26 K        3.07 μs   ±663.83%        2.04 μs       23.89 μs
+feox_memory          312.12 K        3.20 μs    ±73.92%        2.87 μs       10.51 μs
+feox_persistent      273.69 K        3.65 μs   ±103.04%        3.05 μs       20.11 μs
+dets                 127.61 K        7.84 μs   ±614.37%        1.98 μs      391.79 μs
+cubdb                  5.50 K      181.97 μs    ±18.75%      183.30 μs      272.41 μs
 
 *** random_read (parallel: 4) ***
 
 Name                      ips        average  deviation         median         99th %
-ets                   11.79 K       84.82 μs    ±52.44%       82.33 μs      151.21 μs
-feox_memory           11.45 K       87.34 μs    ±68.01%       84.55 μs      168.20 μs
-feox_persistent       11.05 K       90.54 μs    ±46.01%       87.33 μs      170.12 μs
-cachex                10.63 K       94.11 μs   ±170.93%       85.32 μs      179.33 μs
-cubdb                  1.27 K      786.86 μs    ±31.83%      743.93 μs     1489.66 μs
+ets                   12.04 K       83.08 μs    ±66.93%       81.20 μs      142.41 μs
+cachex                11.59 K       86.26 μs   ±139.16%       81.24 μs      160.85 μs
+mnesia                 9.08 K      110.14 μs    ±56.27%       90.72 μs      307.71 μs
+feox_persistent        8.16 K      122.52 μs    ±58.35%      115.58 μs      262.52 μs
+feox_memory            7.60 K      131.62 μs    ±72.93%      120.75 μs      296.83 μs
+dets                   3.98 K      251.54 μs    ±81.64%      220.48 μs      649.32 μs
+cubdb                  1.47 K      681.04 μs    ±41.53%      638.09 μs     1316.96 μs
 
 *** write_only (parallel: 4) ***
 
 Name                      ips        average  deviation         median         99th %
-ets                  363.40 K        2.75 μs   ±695.00%        1.94 μs        8.00 μs
-feox_memory          227.35 K        4.40 μs   ±647.28%        2.35 μs       37.78 μs
-cachex               210.77 K        4.74 μs   ±553.62%        3.52 μs       14.16 μs
-feox_persistent       44.19 K       22.63 μs   ±931.39%        2.76 μs       94.31 μs
-cubdb                  1.07 K      931.50 μs    ±39.55%      892.58 μs     1459.60 μs
+ets                  334.88 K        2.99 μs   ±695.11%        2.17 μs        8.31 μs
+cachex               276.94 K        3.61 μs   ±530.33%        2.86 μs        9.62 μs
+mnesia                59.87 K       16.70 μs   ±438.83%        7.94 μs      143.39 μs
+feox_memory           29.55 K       33.84 μs   ±115.64%       23.89 μs      118.62 μs
+feox_persistent       15.10 K       66.20 μs   ±997.97%       28.27 μs      794.28 μs
+dets                   3.21 K      311.26 μs   ±686.99%       10.58 μs     8190.16 μs
+cubdb                  0.79 K     1272.06 μs    ±63.11%     1054.00 μs     5205.89 μs
 
 *** mixed_80_20 (parallel: 4) ***
 
 Name                      ips        average  deviation         median         99th %
-ets                   11.77 K       84.93 μs    ±57.41%       82.54 μs      153.01 μs
-feox_memory           11.17 K       89.54 μs    ±63.96%       85.51 μs      182.37 μs
-cachex                10.21 K       97.96 μs   ±167.72%       88.16 μs      197.98 μs
-feox_persistent        7.58 K      131.92 μs   ±312.81%       89.50 μs     1299.76 μs
-cubdb                  1.12 K      890.01 μs    ±84.43%      612.37 μs     3651.47 μs
+ets                   11.82 K       84.63 μs   ±163.88%       79.60 μs      148.14 μs
+cachex                11.25 K       88.87 μs   ±180.58%       81.25 μs      164.85 μs
+mnesia                 9.29 K      107.68 μs   ±172.23%       88.91 μs      428.43 μs
+feox_memory            7.59 K      131.80 μs   ±125.35%      117.54 μs      304.62 μs
+feox_persistent        5.00 K      199.97 μs   ±156.60%      164.57 μs      672.27 μs
+dets                   3.30 K      303.10 μs   ±103.31%      262.91 μs      865.34 μs
+cubdb                  0.97 K     1030.96 μs    ±96.62%      681.24 μs     4900.36 μs
 
 *** delete (parallel: 4) ***
 
 Name                      ips        average  deviation         median         99th %
-ets                  766.24 K        1.31 μs   ±625.16%        1.09 μs        3.31 μs
-cachex               423.67 K        2.36 μs   ±939.01%        1.85 μs        4.78 μs
-feox_memory          201.64 K        4.96 μs   ±476.64%        2.13 μs       48.29 μs
-feox_persistent      178.10 K        5.61 μs   ±948.41%        2.14 μs       50.10 μs
-cubdb                  2.35 K      425.35 μs    ±43.01%      341.01 μs      803.75 μs
+ets                 1750.73 K        0.57 μs  ±3317.33%        0.43 μs        0.93 μs
+cachex               952.19 K        1.05 μs  ±1319.98%        0.82 μs        1.90 μs
+mnesia                98.58 K       10.14 μs   ±716.83%        3.54 μs       80.08 μs
+feox_persistent       56.30 K       17.76 μs   ±298.57%        9.66 μs       74.62 μs
+feox_memory           40.18 K       24.89 μs   ±313.01%       13.30 μs       86.98 μs
+dets                  33.32 K       30.01 μs   ±576.52%        8.71 μs      607.42 μs
+cubdb                  3.68 K      271.63 μs    ±23.34%      262.56 μs      440.07 μs
 ```
 
 </details>
@@ -216,16 +243,23 @@ Memory and reduction-count tables are in the full run output; broadly,
 `feoxdb_ex` (both modes) uses less BEAM heap per operation than `:ets`'s
 own reported figure (because the value lives on the Rust side, not the
 BEAM heap) and far less than CubDB, whose GenServer-mediated access adds
-substantial per-call reduction and allocation overhead.
+substantial per-call reduction and allocation overhead. `:mnesia`'s
+dirty operations and `:dets`'s port-based access both allocate more per
+call than `:ets` as well, though less than CubDB.
 
 ## Caveats / what this run does not establish
 
 - Single container, not the PRD's two dedicated hosts (`x86_64` +
   Apple Silicon).
-- `feox_persistent` and CubDB data files were placed on tmpfs
-  (`/dev/shm`) specifically to avoid the write-buffer backpressure noted
-  above swamping stderr; a real disk (with or without `io_uring`) will
-  behave differently, likely worse for persistent-mode latency.
+- `feox_persistent`, CubDB, `:dets`, and `:mnesia` data files were
+  placed on tmpfs (`/dev/shm`) specifically to avoid the write-buffer
+  backpressure noted above swamping stderr; a real disk (with or
+  without `io_uring`) will behave differently, likely worse for
+  persistent-mode latency across all of them.
+- `:mnesia` is exercised only via `dirty_read`/`dirty_write`/
+  `dirty_delete` with a single `disc_copies` replica — not a
+  transactional or multi-node comparison, which would show materially
+  different (worse) numbers.
 - No disabled CPU frequency scaling, unverified `io_uring` availability.
 - Only 4 of the PRD's 8 workloads are implemented (see
   `bench/README.md`).
