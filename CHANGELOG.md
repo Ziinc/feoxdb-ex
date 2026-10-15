@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Added `FeoxDB.Term`: ETF-encoded term keys and values (`put/4`,
+  `get/2`, `delete/2`, `member?/2`, `stream/1`), with values over the 4 MB
+  record limit chunked transparently.
+- Added `FeoxDB.max_key_size/0` and `FeoxDB.max_value_size/0`.
+
 ### Milestones 3-7: tests, CI matrix, release automation, benchmarks
 
 - Milestone 3 (property tests and concurrency tests): added

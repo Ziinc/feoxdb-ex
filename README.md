@@ -47,6 +47,22 @@ for disk-backed stores.
 Keys are limited to 100 KB and values to 4 MB (mirroring the underlying
 `feoxdb` Rust crate's internal limits).
 
+### Erlang terms and large values
+
+`FeoxDB.Term` stores arbitrary Erlang terms (keys and values) encoded as
+ETF, and transparently splits values larger than the 4 MB record limit
+into chunks:
+
+```elixir
+{:ok, store} = FeoxDB.open()
+:ok = FeoxDB.Term.put(store, {:user, 1}, %{name: "Ada"})
+{:ok, %{name: "Ada"}} = FeoxDB.Term.get(store, {:user, 1})
+:ok = FeoxDB.Term.put(store, :blob, :crypto.strong_rand_bytes(10_000_000))
+FeoxDB.Term.stream(store) |> Enum.to_list()
+```
+
+A store used through `FeoxDB.Term` should only be accessed through it.
+
 
 ## Benchmarks
 
