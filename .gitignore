@@ -34,3 +34,6 @@ feox_db-*.tar
 # Generated benchmark reports (PRD section 9); rerun bench/run.exs to
 # regenerate.
 /bench/output/
+
+# Dialyzer PLTs are built per OTP/Elixir version; never commit them.
+/priv/plts/

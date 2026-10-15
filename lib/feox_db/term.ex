@@ -257,6 +257,9 @@ defmodule FeoxDB.Term do
     end
   end
 
+  # Only decodes bytes this module wrote with `term_to_binary/1`, and `:safe`
+  # refuses to create atoms, so Sobelow's generic warning does not apply.
+  # sobelow_skip ["Misc.BinToTerm"]
   defp safe_binary_to_term(bin) do
     {:ok, :erlang.binary_to_term(bin, [:safe])}
   rescue
