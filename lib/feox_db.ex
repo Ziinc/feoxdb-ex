@@ -394,6 +394,19 @@ defmodule FeoxDB do
     end
   end
 
+  ## Limits
+
+  @doc "Returns the largest key, in bytes, the store accepts."
+  @spec max_key_size() :: pos_integer()
+  def max_key_size, do: @max_key_size
+
+  @doc """
+  Returns the largest value, in bytes, a single record accepts. Use
+  `FeoxDB.Term` to store larger values in chunks.
+  """
+  @spec max_value_size() :: pos_integer()
+  def max_value_size, do: @max_value_size
+
   ## Stats
 
   @doc "Returns a snapshot of the store's internal statistics as a map."
