@@ -75,29 +75,32 @@ full methodology and caveats.
 
 | Workload | `:ets` | feox_memory | cachex |
 |---|---|---|---|
-| Random read | 79.8 μs | 87.3 μs | 83.0 μs |
-| Write only | 1.27 μs | 5.48 μs | 1.85 μs |
-| Mixed 80/20 | 77.9 μs | 86.0 μs | 79.3 μs |
-| Delete | 0.23 μs | 2.87 μs | 0.69 μs |
+| Random read | 0.59 μs | 4.46 μs | 0.86 μs |
+| Write only | 1.11 μs | 3.95 μs | 1.58 μs |
+| Mixed 80/20 | 0.62 μs | 4.74 μs | 1.03 μs |
+| Delete | 0.19 μs | 3.22 μs | 0.50 μs |
 
-`feoxdb_ex` (memory mode) tracks raw `:ets` reasonably closely across
-all four workloads.
+`feoxdb_ex` (memory mode) is several times slower than `:ets` and
+Cachex per operation, and the gap widens under concurrency (about 20 μs
+per read at `parallel: 4`, against 0.55 μs for `:ets`). Every call
+runs on a dirty I/O scheduler, which is the likely cause.
 
 ### Disk-backed
 
 | Workload | feox_persistent | dets | mnesia (disc_copies) | cubdb |
 |---|---|---|---|---|
-| Random read | 95.9 μs | 113.7 μs | 79.8 μs | 185.3 μs |
-| Write only | 24.8 μs | 2.28 μs | 3.60 μs | 233.4 μs |
-| Mixed 80/20 | 86.7 μs | 118.8 μs | 88.2 μs | 202.7 μs |
-| Delete | 3.05 μs | 1.98 μs | 2.04 μs | 183.3 μs |
+| Random read | 4.59 μs | 7.54 μs | 0.56 μs | 92.4 μs |
+| Write only | 6.59 μs | 1.37 μs | 2.73 μs | 188.1 μs |
+| Mixed 80/20 | 5.82 μs | 8.24 μs | 0.92 μs | 80.6 μs |
+| Delete | 3.68 μs | 1.22 μs | 1.61 μs | 88.5 μs |
 
-`feoxdb_ex` (persistent mode) stays well ahead of CubDB across the
-board; `mnesia` here is its cheapest, least-safe `dirty_*` API, not a
-transactional comparison. `feox_persistent`'s write-only number is
-affected by write-buffer backpressure under sustained load, and
-`dets`'s own write buffering shows up as a long tail rather than in its
-median (see the report for details).
+`feoxdb_ex` (persistent mode) reads faster than `:dets` and CubDB and
+is far ahead of CubDB overall. Mnesia is faster still, but only through
+its `dirty_*` API, which skips transactions. Durability isn't equal
+across this group: CubDB fsyncs every write and the others don't.
+`feox_persistent` and `:dets` writes have long tails that medians hide
+(99th percentile 429 μs for `feox_persistent`, which logs write-buffer
+backpressure under sustained load); see the report for details.
 
 ## License
 

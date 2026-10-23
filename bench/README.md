@@ -1,7 +1,8 @@
 # Benchmark harness
 
 Implements PRD section 9's comparison of `feoxdb_ex` (memory and
-persistent modes) against CubDB, Cachex, and raw `:ets`, using
+persistent modes) against CubDB, Cachex, `:dets`, `:mnesia`, and raw
+`:ets`, using
 [Benchee](https://github.com/bencheeorg/benchee).
 
 ## Running it
@@ -55,15 +56,32 @@ hook to insert a fresh key and then deletes exactly that key, so every
 measured delete removes a key that actually exists, without ever running
 out of keys mid-benchmark.
 
+The write-only workload (4) inserts a brand-new key on every iteration,
+so each table grows during measurement, and faster systems finish with
+larger tables than slower ones.
+
 ## Fairness rules applied (PRD section 9.7)
 
-- CubDB is opened with `auto_compact: false, auto_file_sync: true` — an
-  explicit, stated durability setting, not silently left at a default
-  that may or may not match FeoxDB's persistent mode.
-- `feox_persistent` calls `FeoxDB.flush/1` after preload so the
-  background write time is captured rather than given away for free
-  (there's no "flush variant" toggle yet; every persistent-mode preload
-  flushes).
+- Each system is opened, preloaded, measured, and closed on its own
+  before the next one is opened, so no other store's background work
+  (write-behind flushing, Mnesia log dumps) runs during its measurement.
+  The per-system results are merged into one Benchee report.
+- Every measured call asserts its result (`{:ok, _}` for reads, `:ok`
+  for writes and deletes), and every preloaded key is read back before
+  measurement starts. A failing operation crashes the run instead of
+  being counted as a fast success.
+- Random keys are picked by indexing a tuple, which costs well under a
+  microsecond. (`Enum.random/1` on a 20K-element list costs ~80μs and
+  would swamp the stores' own timings.)
+- Durability settings differ and are stated rather than equalised:
+  CubDB is opened with `auto_compact: false, auto_file_sync: true`, so
+  it fsyncs every write. `feox_persistent`, `:dets`, and `:mnesia`
+  (`disc_copies`, `dirty_*` API) all buffer writes and don't sync per
+  write. On tmpfs the fsync is nearly free; on a real disk CubDB would
+  pay for being the only one that's durable per write.
+- Every disk-backed store calls its `flush/1` after preload, outside the
+  measured window. No measured workload pays the cost of making writes
+  durable.
 - All systems are preloaded from the same generated key list and the
   same random value bytes.
 - Benchee's own warmup phase (`BENCH_WARMUP_S`) serves as the "discard
