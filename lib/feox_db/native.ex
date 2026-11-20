@@ -4,10 +4,10 @@ defmodule FeoxDB.Native do
   version = Mix.Project.config()[:version]
 
   # `.github/workflows/release.yml` (PRD section 8.4) publishes precompiled
-  # artifacts on every `v*` tag and, in the same run, opens a PR committing
-  # a regenerated `checksum-Elixir.FeoxDB.Native.exs`. Until that file has
-  # been committed once (i.e. before the first release), there is nothing
-  # to download, so this always builds from source; once it exists,
+  # artifacts on every `v*` tag and, in the same run, commits a regenerated
+  # `checksum-Elixir.FeoxDB.Native.exs` to main and publishes to Hex. Until
+  # that file has been committed once (i.e. before the first release), there
+  # is nothing to download, so this always builds from source; once it exists,
   # RustlerPrecompiled's own checksum verification takes over and a
   # download is attempted first, same as any other RustlerPrecompiled
   # package. `FEOXDB_BUILD=true` always forces a source build regardless.

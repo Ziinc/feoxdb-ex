@@ -6,11 +6,10 @@ background.
 
 Full FeOxDB API through Rustler precompiled NIFs
 
-Precompiled release artifacts haven't actually been published yet (no
-`v*` tag has been pushed), so the NIF still always builds from source —
-`FeoxDB.Native` switches to downloading precompiled binaries automatically
-once `checksum-Elixir.FeoxDB.Native.exs` exists, which the release
-workflow generates on the first tagged release.
+The Hex package ships `checksum-Elixir.FeoxDB.Native.exs`, so it downloads a
+precompiled NIF for your target. Set `FEOXDB_BUILD=true` to build from source
+instead, which needs a Rust toolchain and `{:rustler, ">= 0.0.0"}` in your
+deps.
 
 ## Installation
 
@@ -19,7 +18,7 @@ Add `feox_db` to your `mix.exs` dependencies:
 ```elixir
 def deps do
   [
-    {:feox_db, "~> 0.1.0"}
+    {:feox_db, "~> 0.2.0"}
   ]
 end
 ```
