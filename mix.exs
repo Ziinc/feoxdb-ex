@@ -1,7 +1,7 @@
 defmodule FeoxDB.MixProject do
   use Mix.Project
 
-  @version "0.1.1"
+  @version "0.2.0"
   @source_url "https://github.com/ziinc/feoxdb-ex"
 
   def project do
@@ -80,7 +80,7 @@ defmodule FeoxDB.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md", "CHANGELOG.md", "docs/PRD.md"]
+      extras: ["README.md", "CHANGELOG.md", "docs/PRD.md", "bench/REPORT.md"]
     ]
   end
 end
