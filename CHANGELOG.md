@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## v0.2.0
 
 - Added `FeoxDB.Term`: ETF-encoded term keys and values (`put/4`,
   `get/2`, `delete/2`, `member?/2`, `stream/1`), with values over the 4 MB
