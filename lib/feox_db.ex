@@ -1,25 +1,15 @@
 defmodule FeoxDB do
   @moduledoc """
-  Elixir bindings for [FeOxDB](https://feoxdb.com), an embedded key-value
-  store written in Rust.
-
-  A `FeoxDB` store can run purely in memory, or persist to disk in the
-  background. See the project PRD (`docs/PRD.md`) for the full design
-  rationale, including which operations run as plain, dirty, or (eventually)
-  chunked NIFs.
-
-  ## Example
+  Stores binary keys and values in memory or on disk with FeOxDB.
 
       {:ok, store} = FeoxDB.open()
-      :ok = FeoxDB.insert(store, "key", "value")
-      {:ok, "value"} = FeoxDB.get(store, "key")
+      :ok = FeoxDB.insert(store, "user:1", "Ada")
+      {:ok, "Ada"} = FeoxDB.get(store, "user:1")
       :ok = FeoxDB.close(store)
 
-  A store's native resources are released when the resource reference is
-  garbage collected, but for disk-backed stores this can leave background
-  writer / TTL sweeper threads (and open file handles) alive for longer than
-  expected. Call `close/1` once you are done with a store to release those
-  resources deterministically instead of waiting on the GC.
+  Pass a file path to `open/1` to keep data across restarts. The store
+  buffers writes. Call `flush/1` to wait for buffered writes to reach disk.
+  Call `close/1` when all processes have finished using the store.
   """
 
   alias FeoxDB.Native
@@ -77,22 +67,16 @@ defmodule FeoxDB do
   ## Lifecycle
 
   @doc """
-  Opens a `FeoxDB` store.
-
-  With no options, the store is memory-only. Pass `path:` to persist to
-  disk.
+  Opens a store and returns `{:ok, store}` on success.
 
   ## Options
 
-    * `:path` - device path for persistent storage. When omitted, the store
-      is memory-only.
-    * `:file_size` - initial file size in bytes for a new persistent store.
-    * `:max_memory` - maximum memory usage in bytes. Defaults to the
-      upstream FeOxDB default (1GB) when a persistent path is given, or
-      unlimited for memory-only stores unless set explicitly.
-    * `:hash_bits` - number of hash table bits (bucket count is `2^bits`).
-    * `:enable_ttl` - enables TTL support (`ttl/2`, `update_ttl/3`,
-      `persist/2`, and TTL-bearing inserts). Defaults to `false`.
+    * `:path` - File path for persistent storage. Omit it to keep data in memory.
+    * `:file_size` - Initial size of a new store file, in bytes.
+    * `:max_memory` - Memory limit in bytes. By default, the store has no limit.
+    * `:hash_bits` - Number of bits for hash table indexes. The table has
+      `2^hash_bits` buckets.
+    * `:enable_ttl` - Set to `true` to enable key expiry. Defaults to `false`.
   """
   @spec open(keyword()) :: {:ok, store()} | {:error, error_reason()}
   def open(opts \\ []) do
@@ -108,21 +92,18 @@ defmodule FeoxDB do
     end
   end
 
-  @doc "Same as `open/1` but raises `FeoxDB.Error` on failure."
+  @doc "Opens a store and returns its handle. Raises `FeoxDB.Error` on a store error."
   @spec open!(keyword()) :: store()
   def open!(opts \\ []) do
     unwrap!(open(opts))
   end
 
   @doc """
-  Closes a store, releasing its native resources (background writer / TTL
-  sweeper threads, and any open file handles for disk-backed stores)
-  deterministically instead of waiting for the resource reference to be
-  garbage collected.
+  Closes the store for all processes that share its handle. Active native
+  calls can finish before the store releases its resources.
 
-  Idempotent: calling `close/1` again on an already-closed store is a
-  no-op and returns `:ok`. Any other operation on a closed store returns
-  `{:error, :closed}` rather than raising or crashing.
+  Repeated calls return `:ok`. Native operations on a closed handle
+  return `{:error, :closed}`.
   """
   @spec close(store()) :: :ok
   def close(store) do
@@ -132,8 +113,8 @@ defmodule FeoxDB do
   @doc """
   Flushes all buffered writes to disk.
 
-  Runs as a dirty I/O NIF (PRD section 5) because it waits for `fsync`.
-  No-op for memory-only stores.
+  Waits for `fsync` on a dirty I/O scheduler. For an in-memory store,
+  this returns `:ok`.
   """
   @spec flush(store()) :: :ok | {:error, error_reason()}
   def flush(store) do
@@ -146,10 +127,10 @@ defmodule FeoxDB do
   ## Basic operations
 
   @doc """
-  Retrieves the value for `key`.
+  Returns `{:ok, value}` for `key`, or `{:error, :not_found}` if it is absent.
 
   Returns `{:error, :key_too_large}` if `key` is larger than #{@max_key_size}
-  bytes, without calling into native code.
+  bytes.
   """
   @spec get(store(), key()) :: {:ok, value()} | {:error, error_reason()}
   def get(store, key) when is_binary(key) do
@@ -161,7 +142,7 @@ defmodule FeoxDB do
     end
   end
 
-  @doc "Same as `get/2` but raises `FeoxDB.Error` on failure."
+  @doc "Returns the value for `key`. Raises `FeoxDB.Error` on a store error."
   @spec get!(store(), key()) :: value()
   def get!(store, key) do
     unwrap!(get(store, key))
@@ -170,12 +151,12 @@ defmodule FeoxDB do
   @doc """
   Inserts or updates `key` with `value`.
 
-  Pass `ttl: seconds` to set an expiry (requires `enable_ttl: true` at
-  `open/1` time).
+  To expire the key, open the store with `enable_ttl: true` and pass
+  `ttl: seconds` to this function.
 
   Returns `{:error, :key_too_large}` if `key` is larger than
   #{@max_key_size} bytes, or `{:error, :value_too_large}` if `value` is
-  larger than #{@max_value_size} bytes, without calling into native code.
+  larger than #{@max_value_size} bytes.
   """
   @spec insert(store(), key(), value(), keyword()) :: :ok | {:error, error_reason()}
   def insert(store, key, value, opts \\ []) when is_binary(key) and is_binary(value) do
@@ -190,7 +171,7 @@ defmodule FeoxDB do
     end
   end
 
-  @doc "Same as `insert/4` but raises `FeoxDB.Error` on failure."
+  @doc "Writes `value` under `key`. Raises `FeoxDB.Error` on a store error."
   @spec insert!(store(), key(), value(), keyword()) :: :ok
   def insert!(store, key, value, opts \\ []) do
     unwrap!(insert(store, key, value, opts))
@@ -200,7 +181,7 @@ defmodule FeoxDB do
   Deletes `key`.
 
   Returns `{:error, :key_too_large}` if `key` is larger than #{@max_key_size}
-  bytes, without calling into native code.
+  bytes.
   """
   @spec delete(store(), key()) :: :ok | {:error, error_reason()}
   def delete(store, key) when is_binary(key) do
@@ -215,9 +196,7 @@ defmodule FeoxDB do
   @doc """
   Returns whether `key` exists in the store.
 
-  A `key` larger than #{@max_key_size} bytes can never have been inserted
-  (see `insert/4`), so this returns `false` for it directly, without calling
-  into native code.
+  Returns `false` if the key exceeds #{@max_key_size} bytes.
   """
   @spec member?(store(), key()) :: boolean() | {:error, error_reason()}
   def member?(store, key) when is_binary(key) do
@@ -242,19 +221,12 @@ defmodule FeoxDB do
   ## Ranges
 
   @doc """
-  Returns up to `limit` key-value pairs with keys in `[start_key, end_key]`
-  (both bounds inclusive), ordered by key.
+  Returns up to `limit` pairs in key order, including both range endpoints.
 
-  `limit` is required: an unbounded range query could run for an unknown
-  time on the scheduler and build an unbounded term (PRD section 7). `limit`
-  must also not exceed #{@max_range_limit}; larger values return
-  `{:error, :limit_too_large}` without reaching the native code, since the
-  native side allocates a `Vec` sized to `limit`.
-
-  Runs as a dirty I/O NIF, since the cost of a scan depends on `limit`.
-
-  Returns `{:error, :key_too_large}` if `start_key` or `end_key` is larger
-  than #{@max_key_size} bytes, without calling into native code.
+  Pass a positive integer for `limit`. A limit above #{@max_range_limit}
+  returns `{:error, :limit_too_large}`. If either key exceeds
+  #{@max_key_size} bytes, the call returns `{:error, :key_too_large}`.
+  The scan runs on a dirty I/O scheduler.
   """
   @spec range(store(), key(), key(), pos_integer()) ::
           {:ok, [{key(), value()}]} | {:error, error_reason()}
@@ -279,10 +251,10 @@ defmodule FeoxDB do
   ## TTL
 
   @doc """
-  Returns the remaining TTL in seconds for `key`, or `nil` if it has none.
+  Returns `{:ok, seconds}` until expiry, or `{:ok, nil}` for a key without a TTL.
 
   Returns `{:error, :key_too_large}` if `key` is larger than #{@max_key_size}
-  bytes, without calling into native code.
+  bytes.
   """
   @spec ttl(store(), key()) :: {:ok, non_neg_integer() | nil} | {:error, error_reason()}
   def ttl(store, key) when is_binary(key) do
@@ -298,7 +270,7 @@ defmodule FeoxDB do
   Sets `key`'s TTL to `seconds` from now.
 
   Returns `{:error, :key_too_large}` if `key` is larger than #{@max_key_size}
-  bytes, without calling into native code.
+  bytes.
   """
   @spec update_ttl(store(), key(), pos_integer()) :: :ok | {:error, error_reason()}
   def update_ttl(store, key, seconds)
@@ -315,7 +287,7 @@ defmodule FeoxDB do
   Removes `key`'s TTL, making it permanent.
 
   Returns `{:error, :key_too_large}` if `key` is larger than #{@max_key_size}
-  bytes, without calling into native code.
+  bytes.
   """
   @spec persist(store(), key()) :: :ok | {:error, error_reason()}
   def persist(store, key) when is_binary(key) do
@@ -333,13 +305,11 @@ defmodule FeoxDB do
   Atomically adds `delta` to the integer stored at `key` and returns the new
   value.
 
-  The value is stored internally as an 8-byte little-endian `i64`; this
-  function takes and returns a plain Elixir integer; the little-endian
-  conversion happens on the Rust side; there is no `<<n::signed-little-64>>`
-  to get wrong (PRD section 7).
+  Pass an Elixir integer for `delta`. The store uses an 8-byte signed
+  little-endian integer for the counter and returns `{:ok, integer}`.
 
   Returns `{:error, :key_too_large}` if `key` is larger than #{@max_key_size}
-  bytes, without calling into native code.
+  bytes.
   """
   @spec increment(store(), key(), integer()) :: {:ok, integer()} | {:error, error_reason()}
   def increment(store, key, delta \\ 1) when is_binary(key) and is_integer(delta) do
@@ -353,12 +323,11 @@ defmodule FeoxDB do
 
   @doc """
   Atomically replaces `key`'s value with `new_value` if it currently equals
-  `expected`.
+  `expected`. Returns `{:ok, true}` on replacement and `{:ok, false}` on mismatch.
 
   Returns `{:error, :key_too_large}` if `key` is larger than
   #{@max_key_size} bytes, or `{:error, :value_too_large}` if `expected` or
-  `new_value` is larger than #{@max_value_size} bytes, without calling into
-  native code.
+  `new_value` is larger than #{@max_value_size} bytes.
   """
   @spec compare_and_swap(store(), key(), value(), value()) ::
           {:ok, boolean()} | {:error, error_reason()}
@@ -381,7 +350,7 @@ defmodule FeoxDB do
 
   Returns `{:error, :key_too_large}` if `key` is larger than
   #{@max_key_size} bytes, or `{:error, :value_too_large}` if `patch` is
-  larger than #{@max_value_size} bytes, without calling into native code.
+  larger than #{@max_value_size} bytes.
   """
   @spec json_patch(store(), key(), binary()) :: :ok | {:error, error_reason()}
   def json_patch(store, key, patch) when is_binary(key) and is_binary(patch) do
