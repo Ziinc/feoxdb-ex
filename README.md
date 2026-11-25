@@ -1,104 +1,67 @@
 # feoxdb-ex
 
-Elixir bindings for [FeOxDB](https://feoxdb.com), an embedded key-value store
-written in Rust that keeps hot data in memory and writes to disk in the
-background.
-
-Full FeOxDB API through Rustler precompiled NIFs
-
-The Hex package ships `checksum-Elixir.FeoxDB.Native.exs`, so it downloads a
-precompiled NIF for your target. Set `FEOXDB_BUILD=true` to build from source
-instead, which needs a Rust toolchain and `{:rustler, ">= 0.0.0"}` in your
-deps.
+Use [FeOxDB](https://feoxdb.com) to store binary keys and values in an
+Elixir application. The store runs in the same VM as your application.
+Keep data in memory or give the store a file path to keep data across restarts.
 
 ## Installation
 
-Add `feox_db` to your `mix.exs` dependencies:
+Add the Hex package to the dependencies in `mix.exs`:
 
 ```elixir
-def deps do
-  [
-    {:feox_db, "~> 0.2.0"}
-  ]
-end
+{:feox_db, "~> 0.2.0"}
 ```
 
-## Usage
+Run `mix deps.get`. On supported targets, RustlerPrecompiled downloads the
+native library during compilation and checks it against the package checksum.
+To build from source, install Rust, add `{:rustler, ">= 0.0.0"}` to your
+dependencies, and set `FEOXDB_BUILD=true` when compiling.
+
+## Store binary data
 
 ```elixir
 {:ok, store} = FeoxDB.open()
-:ok = FeoxDB.insert(store, "key", "value")
-{:ok, "value"} = FeoxDB.get(store, "key")
+:ok = FeoxDB.insert(store, "user:1", "Ada")
+{:ok, "Ada"} = FeoxDB.get(store, "user:1")
 :ok = FeoxDB.close(store)
+```
 
-# Persistent mode
-{:ok, store} = FeoxDB.open(path: "/var/lib/app.feox")
-:ok = FeoxDB.insert(store, "key", "value")
+Keys can contain up to 100 KiB. Each value can contain up to 4 MiB.
+
+### Keep data on disk
+
+Pass a file path to `open/1`. The store writes to disk in the background.
+A crash can lose buffered writes. Call `flush/1` to wait for them to reach disk.
+
+```elixir
+{:ok, store} = FeoxDB.open(path: "app.feox")
+:ok = FeoxDB.insert(store, "user:1", "Ada")
 :ok = FeoxDB.flush(store)
 :ok = FeoxDB.close(store)
 ```
 
-Call `FeoxDB.close/1` once you are done with a store instead of relying on
-the garbage collector: it deterministically stops the store's background
-writer/TTL sweeper threads and releases its resources, which matters most
-for disk-backed stores.
+Close the store when you finish. Closing releases its native resources,
+including file handles and background workers, after active calls finish.
 
-Keys are limited to 100 KB and values to 4 MB (mirroring the underlying
-`feoxdb` Rust crate's internal limits).
+### Store Erlang terms
 
-### Erlang terms and large values
-
-`FeoxDB.Term` stores arbitrary Erlang terms (keys and values) encoded as
-ETF, and transparently splits values larger than the 4 MB record limit
-into chunks:
+Use `FeoxDB.Term` for term keys and values. It splits large encoded values
+into records and reassembles them on read. Reserve a separate store for
+terms because raw binary keys can overwrite its internal records.
 
 ```elixir
 {:ok, store} = FeoxDB.open()
 :ok = FeoxDB.Term.put(store, {:user, 1}, %{name: "Ada"})
 {:ok, %{name: "Ada"}} = FeoxDB.Term.get(store, {:user, 1})
-:ok = FeoxDB.Term.put(store, :blob, :crypto.strong_rand_bytes(10_000_000))
-FeoxDB.Term.stream(store) |> Enum.to_list()
+:ok = FeoxDB.close(store)
 ```
-
-A store used through `FeoxDB.Term` should only be accessed through it.
-
 
 ## Benchmarks
 
-Preliminary, single-container numbers (median latency, `parallel: 1`,
-20K keys / 64B values) from `bench/run.exs` — not a substitute for a
-dedicated-hardware run. See [`bench/REPORT.md`](bench/REPORT.md) for
-full methodology and caveats.
-
-### Memory-backed
-
-| Workload | `:ets` | feox_memory | cachex |
-|---|---|---|---|
-| Random read | 79.8 μs | 87.3 μs | 83.0 μs |
-| Write only | 1.27 μs | 5.48 μs | 1.85 μs |
-| Mixed 80/20 | 77.9 μs | 86.0 μs | 79.3 μs |
-| Delete | 0.23 μs | 2.87 μs | 0.69 μs |
-
-`feoxdb_ex` (memory mode) tracks raw `:ets` reasonably closely across
-all four workloads.
-
-### Disk-backed
-
-| Workload | feox_persistent | dets | mnesia (disc_copies) | cubdb |
-|---|---|---|---|---|
-| Random read | 95.9 μs | 113.7 μs | 79.8 μs | 185.3 μs |
-| Write only | 24.8 μs | 2.28 μs | 3.60 μs | 233.4 μs |
-| Mixed 80/20 | 86.7 μs | 118.8 μs | 88.2 μs | 202.7 μs |
-| Delete | 3.05 μs | 1.98 μs | 2.04 μs | 183.3 μs |
-
-`feoxdb_ex` (persistent mode) stays well ahead of CubDB across the
-board; `mnesia` here is its cheapest, least-safe `dirty_*` API, not a
-transactional comparison. `feox_persistent`'s write-only number is
-affected by write-buffer backpressure under sustained load, and
-`dets`'s own write buffering shows up as a long tail rather than in its
-median (see the report for details).
+The [benchmark report](bench/REPORT.md) compares FeOxDB with ETS, Cachex,
+DETS, Mnesia, and CubDB. The run used 20,000 keys and 64-byte values.
+All persistent stores used a RAM-backed filesystem (tmpfs).
 
 ## License
 
 MIT
-

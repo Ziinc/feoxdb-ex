@@ -1,7 +1,8 @@
 defmodule FeoxDB.Error do
   @moduledoc """
-  Raised by the bang (`!`) variants of `FeoxDB` functions when the
-  underlying store returns an error.
+  Exception for store errors. The `reason` field contains the error atom.
+
+  Functions such as `FeoxDB.get!/2` raise this exception on failure.
   """
 
   defexception [:reason]

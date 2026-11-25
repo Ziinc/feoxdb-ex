@@ -1,26 +1,13 @@
 defmodule FeoxDB.CredoChecks.NoUnsafeAtomConversion do
   @moduledoc """
-  Flags calls that convert arbitrary external input into atoms or terms
-  without a safety net.
+  Flags calls to `String.to_atom/1` and `:erlang.binary_to_term/1`.
 
-  FeOxDB is a key-value store that regularly handles keys and values coming
-  straight from client input (over the wire, from disk, etc). Converting such
-  input directly into atoms or Erlang terms is dangerous:
+  The VM keeps atoms for its lifetime. For input that names an existing
+  atom, use `String.to_existing_atom/1`. It raises if the atom does not exist.
 
-    * `String.to_atom/1` creates a *new* atom for every distinct input it
-      sees. Since atoms are never garbage collected, an attacker who
-      controls the input can exhaust the atom table and crash the whole
-      VM. `String.to_existing_atom/1` should be used instead, which raises
-      instead of creating new atoms.
-    * `:erlang.binary_to_term/1` (without the `[:safe]` option) can
-      construct arbitrary terms, including atoms (same atom-table risk as
-      above) and function/pid/reference values crafted by a malicious
-      payload. `:erlang.binary_to_term/2` with the `:safe` option should be
-      used instead.
-
-  This check exists purely as a regression guard: this codebase currently
-  avoids both patterns, but nothing previously stopped a future change from
-  reintroducing them.
+  When decoding external terms, use `:erlang.binary_to_term/2` with
+  `[:safe]` to prevent the decoder from creating atoms. Validate the
+  decoded term before using it.
   """
 
   @explanation [

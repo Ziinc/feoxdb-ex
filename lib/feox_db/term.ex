@@ -1,29 +1,21 @@
 defmodule FeoxDB.Term do
   @moduledoc """
-  Stores arbitrary Erlang terms in a `FeoxDB` store, using the External Term
-  Format (ETF) for both keys and values.
-
-  Values whose encoding is larger than FeoxDB's per-value limit are split
-  into chunks transparently: `put/4` writes the chunks under internal keys
-  followed by a small manifest under the key itself, and `get/2` reassembles
-  them. Callers never see the chunks.
+  Stores keys and values in Erlang External Term Format (ETF).
 
       {:ok, store} = FeoxDB.open()
       :ok = FeoxDB.Term.put(store, {:user, 1}, %{name: "Ada"})
       {:ok, %{name: "Ada"}} = FeoxDB.Term.get(store, {:user, 1})
+      :ok = FeoxDB.close(store)
 
-  A store used through this module should only be accessed through this
-  module: chunks live under keys that start with a `0` byte and every
-  encoded key starts with the ETF version byte (`131`), so binary keys
-  written with `FeoxDB.insert/4` can collide with either.
+  Use a separate store for term data. Raw binary writes can overwrite
+  encoded keys or the internal records that hold chunks of large values.
 
-  Values are decoded with `:erlang.binary_to_term/2`'s `:safe` option, so a
-  value referencing an atom that does not exist in the reading VM returns
-  `{:error, :corrupted_data}` instead of creating it.
+  `put/4` writes the chunks first, replaces the manifest under the encoded
+  key, then removes the old chunks. If a concurrent update removes a chunk
+  during a read, `get/2` retries once.
 
-  A chunked overwrite writes the new chunks before the manifest that points
-  at them and only then deletes the old chunks, so a concurrent `get/2`
-  sees either the old or the new value.
+  The decoder uses the `:safe` option. If a value contains an atom that
+  does not exist in the reading VM, `get/2` returns `{:error, :corrupted_data}`.
   """
 
   @inline 0
@@ -35,14 +27,14 @@ defmodule FeoxDB.Term do
   @page_size 1_000
 
   @doc """
-  Stores `value` under `key`, both arbitrary terms.
+  Stores a term under `key`. The key can also be a term.
 
   ## Options
 
-    * `:ttl` - expiry in seconds, as in `FeoxDB.insert/4`.
-    * `:chunk_size` - maximum bytes stored per record before the value is
-      split into chunks. Defaults to (and may not exceed) the FeoxDB value
-      size limit.
+    * `:ttl` - Seconds until expiry. Open the store with `enable_ttl: true`.
+    * `:chunk_size` - Split the encoded value into chunks when it reaches this
+      size in bytes. Pass an integer from 2 to the value returned by
+      `FeoxDB.max_value_size/0`. The default is the maximum.
   """
   @spec put(FeoxDB.store(), term(), term(), keyword()) :: :ok | {:error, FeoxDB.error_reason()}
   def put(store, key, value, opts \\ []) do
@@ -103,9 +95,9 @@ defmodule FeoxDB.Term do
   end
 
   @doc """
-  Returns a lazy stream of every `{key, value}` pair in the store, in ETF
-  key order. Chunked values are reassembled; entries deleted while the
-  stream runs are skipped.
+  Streams `{key, value}` pairs in encoded key order. The stream reassembles
+  chunked values and skips entries it cannot decode. A range scan error
+  raises `FeoxDB.Error` during enumeration.
   """
   @spec stream(FeoxDB.store()) :: Enumerable.t({term(), term()})
   def stream(store) do

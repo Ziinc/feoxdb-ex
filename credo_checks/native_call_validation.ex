@@ -1,45 +1,14 @@
 defmodule FeoxDB.CredoChecks.NativeCallValidation do
   @moduledoc """
-  Flags public `FeoxDB` API functions that call into `FeoxDB.Native` without
-  any visible validation or control-flow guard beforehand.
+  Checks public functions in `lib/feox_db.ex` that call the native binding.
 
-  `FeoxDB.Native` is the Rustler NIF boundary: every argument that crosses it
-  ends up read directly by Rust code. Public functions in `lib/feox_db.ex`
-  are expected to validate or otherwise narrow their inputs (via a guard
-  clause such as `when is_binary(key)`, or a `with`/`case` construct) before
-  handing anything to `Native`, so that obviously-wrong input is rejected in
-  Elixir with a friendly error instead of tripping an assertion (or worse)
-  on the Rust side.
+  The check looks for a guard on the function head, a type check such as
+  `is_binary/1`, or a `case` or `with` expression in the body. It skips
+  single-argument functions such as `size/1`, which take only a store handle.
 
-  ## Heuristic, not semantic analysis
-
-  Credo checks operate on the AST, not on typed/semantic information, so
-  this check is intentionally a coarse heuristic: a function "passes" if it
-  contains *any* of the following anywhere in its definition, in addition
-  to a call to `Native.<something>`/`FeoxDB.Native.<something>`:
-
-    * a guard clause on the function head (a `when ...` clause), or
-    * a `case` expression, or
-    * a `with` expression
-
-  Known limitations:
-
-    * **False negatives**: a function could contain a `case`/`with`/guard
-      that has nothing to do with validating the arguments passed to
-      `Native` (e.g. a `case` on an unrelated value) and this check would
-      still consider it "guarded". It cannot verify that the guard/branch
-      actually narrows the values reaching `Native`.
-    * **False positives**: a function that legitimately needs no validation
-      (e.g. it forwards an already-validated value, or takes no
-      user-controlled arguments) but doesn't happen to use `case`/`with`/a
-      guard will still be flagged. To keep this from firing on the store
-      handle alone, functions that take a single argument (assumed to be
-      just the opaque `store` reference, e.g. `size/1`, `stats/1`) are
-      skipped entirely, since there is no additional caller-supplied value
-      to validate.
-
-  Given these limitations, treat findings from this check as a prompt to
-  double-check the function by hand, not as an automatic proof of a bug.
+  Review the arguments at the native call site. An unrelated guard can
+  hide a missing check. A helper can validate an argument without using
+  a construct the check recognizes.
   """
 
   @explanation [
